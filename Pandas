@@ -25,3 +25,7 @@ grouped_df = df.groupby(['table_name', 'database_name', 'column_name']).agg(
 
 # Display the aggregated DataFrame
 print(grouped_df)
+
+
+# Create a new column 'all_rules'
+df['all_rules'] = df.apply(lambda row: f"{row['rule_def_id']}:{row['rule_name']}:{row['rule_desc']}:{row['rule_status']}", axis=1)
