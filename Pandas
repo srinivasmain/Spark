@@ -1,0 +1,27 @@
+# Add a column 'passcnt'
+df['passcnt'] = df.apply(lambda row: 0 if row['rule_status'] == 'Fail' else 1, axis=1)
+
+# Add a column 'failcnt'
+df['failcnt'] = df.apply(lambda row: 1 if row['rule_status'] == 'Fail' else 0, axis=1)
+
+# Add a column 'noExec'
+df['noExec'] = df.apply(lambda row: 1 if row['rule_status'] == 'Not Executed' else 0, axis=1)
+
+# Add a column 'total_count'
+df['total_count'] = 1
+
+# Add a column 'passPercentage'
+df['passPercentage'] = round((df['passcnt'] / df['total_count']) * 100, 8)
+
+# Group by and aggregate
+grouped_df = df.groupby(['table_name', 'database_name', 'column_name']).agg(
+    all_rules=('all_rules', lambda x: ':'.join(x)),
+    passcnt=('passcnt', 'sum'),
+    failcnt=('failcnt', 'sum'),
+    noExec=('noExec', 'sum'),
+    total_count=('total_count', 'sum'),
+    passPercentage=('passPercentage', 'mean')  # Assuming you want the mean of passPercentage
+).reset_index()
+
+# Display the aggregated DataFrame
+print(grouped_df)
