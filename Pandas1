@@ -1,0 +1,69 @@
+import pandas as pd
+
+# Sample DataFrame
+data = [
+    ('Sales', 'Products', 'na', 6, 'Max', 'Passed'),
+    ('Sales', 'Products', 'na', 7, 'Min', 'Not Executed'),
+    ('Sales', 'Products', 'na', 11, 'Min', 'Passed'),
+    ('Sales', 'Products', 'Product_ID', 1, 'avg', 'Passed'),
+    ('Sales', 'Products', 'Product_ID', 2, 'Positive', 'Failed'),
+    ('Sales', 'Products', 'Product_Name', 3, 'Non-Empty', 'Passed'),
+    ('Sales', 'Products', 'Price', 4, 'Non-Negative', 'Not Executed'),
+    ('Sales', 'Products', 'Price', 5, 'Maximum Limit', 'Passed'),
+    ('Sales', 'Products', 'Column1', 8, 'Rule 8', 'Passed'),
+    ('Sales', 'Products', 'Column1', 9, 'Rule 9', 'Failed'),
+    ('Sales', 'Products', 'Column2', 10, 'Rule 10', 'Not Executed')
+]
+
+columns = ['db_name', 'table_name', 'column_name', 'rule_id', 'rule_name', 'rule_status']
+
+df = pd.DataFrame(data, columns=columns)
+
+# Define conditions
+pass_condition = df['rule_status'] == 'Passed'
+failed_condition = df['rule_status'] == 'Failed'
+not_executed_condition = df['rule_status'] == 'Not Executed'
+
+# Aggregate
+result_df = (
+    df.groupby(['db_name', 'table_name', 'column_name'])
+      .agg(
+          pass_count=('rule_status', lambda x: (x == 'Passed').sum()),
+          failed_count=('rule_status', lambda x: (x == 'Failed').sum()),
+          not_executed_count=('rule_status', lambda x: (x == 'Not Executed').sum()),
+          total_rules=('rule_id', 'nunique')
+      )
+).reset_index()
+
+# Calculate the percentage
+result_df['pass_percentage'] = result_df.apply(
+    lambda row: (row['pass_count'] / row['total_rules']) * 100 if row['column_name'] == 'na' else row['pass_count'] / row['total_rules'],
+    axis=1
+)
+
+output_rows = []
+
+# Create the JSON
+for _, row in result_df.iterrows():
+    asset_details = f"{row['db_name']}.{row['table_name']}.{row['column_name']}"
+    rules = df[(df['db_name'] == row['db_name']) & (df['table_name'] == row['table_name']) & (df['column_name'] == row['column_name'])] \
+        .loc[:, ['rule_id', 'rule_name']].drop_duplicates().to_dict(orient='records')
+
+    rules_list = [{'rule_id': r['rule_id'], 'rule_name': r['rule_name']} for r in rules]
+
+    output_dict = {
+        'passCount': row['pass_count'],
+        'failedCount': row['failed_count'],
+        'notExecutedCount': row['not_executed_count'],
+        'totalRules': row['total_rules'],
+        'passPercentage': row['pass_percentage'],
+        'assetDetails': asset_details,
+        'application': 'DQ4QD',
+        'rules': rules_list
+    }
+    output_rows.append({'ruleDetails': output_dict})
+
+# Output as JSON
+output_json = json.dumps(output_rows, indent=2)
+print(result_df)
+print(output_json)
