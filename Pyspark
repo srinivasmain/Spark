@@ -1,0 +1,78 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, countDistinct, sum, when, round
+from pyspark.sql.window import Window
+import json
+
+# Create a Spark session
+spark = SparkSession.builder.appName("DQScores").getOrCreate()
+
+# Sample DataFrame
+data = [
+    ('Sales', 'Products', 'na', 6, 'Max', 'Passed'),
+    ('Sales', 'Products', 'na', 7, 'Min', 'Not Executed'),
+    ('Sales', 'Products', 'na', 11, 'Min', 'Passed'),
+    ('Sales', 'Products', 'Product_ID', 1, 'avg', 'Passed'),
+    ('Sales', 'Products', 'Product_ID', 2, 'Positive', 'Failed'),
+    ('Sales', 'Products', 'Product_Name', 3, 'Non-Empty', 'Passed'),
+    ('Sales', 'Products', 'Price', 4, 'Non-Negative', 'Not Executed'),
+    ('Sales', 'Products', 'Price', 5, 'Maximum Limit', 'Passed'),
+    ('Sales', 'Products', 'Column1', 8, 'Rule 8', 'Passed'),
+    ('Sales', 'Products', 'Column1', 9, 'Rule 9', 'Failed'),
+    ('Sales', 'Products', 'Column2', 10, 'Rule 10', 'Not Executed')
+]
+
+columns = ['db_name', 'table_name', 'column_name', 'rule_id', 'rule_name', 'rule_status']
+
+df = spark.createDataFrame(data, columns)
+
+pass_condition = col('rule_status') == 'Passed'
+failed_condition = col('rule_status') == 'Failed'
+not_executed_condition = col('rule_status') == 'Not Executed'
+overall_window = Window.partitionBy('db_name', 'table_name')
+
+# Aggregate
+result_df = (
+    df.groupBy('db_name', 'table_name', 'column_name')
+      .agg(
+          sum(when(pass_condition, 1).otherwise(0)).alias('pass_count'),
+          sum(when(failed_condition, 1).otherwise(0)).alias('failed_count'),
+          sum(when(not_executed_condition, 1).otherwise(0)).alias('not_executed_count'),
+          countDistinct('rule_id').alias('total_rules')
+      )
+)
+
+# Calculate the percentage
+result_df = result_df.withColumn(
+    'pass_percentage',
+    round(
+        when(col('column_name') == 'na', sum(col('pass_count')).over(overall_window) / sum(col('total_rules')).over(overall_window))
+        .otherwise(col('pass_count') / col('total_rules')) * 100, 8
+    )
+)
+
+output_rows = []
+
+# Create the JSON
+for row in result_df.collect():
+    asset_details = f"{row['db_name']}.{row['table_name']}.{row['column_name']}"
+    rules = df.filter((col('db_name') == row['db_name']) & (col('table_name') == row['table_name']) & (col('column_name') == row['column_name'])) \
+        .select('rule_id', 'rule_name').distinct().collect()
+
+    rules_list = [{'rule_id': r['rule_id'], 'rule_name': r['rule_name']} for r in rules]
+
+    output_dict = {
+        'passCount': row['pass_count'],
+        'failedCount': row['failed_count'],
+        'notExecutedCount': row['not_executed_count'],
+        'totalRules': row['total_rules'],
+        'passPercentage': row['pass_percentage'],
+        'assetDetails': asset_details,
+        'application' : 'DQ4QD',
+        'rules': rules_list
+    }
+    output_rows.append({'ruleDetails': output_dict})
+
+# Output as JSON
+output_json = json.dumps(output_rows, indent=2)
+df.show()
+print(output_json)
