@@ -1,0 +1,201 @@
+import cx_Oracle
+import json
+import pandas as pd
+import os
+import configparser
+
+def main():
+    res_json = read_from_oracle_and_write_to_json()
+    metadata_json = "hive_meta_data_sample.json"
+    final_merged_json = "final_merged_json_5.json"
+    merge_json(res_json, metadata_json, final_merged_json)
+
+def read_from_oracle_and_write_to_json():
+    config = configparser.ConfigParser()
+    config.read('jdbc.ini')
+
+    oracle_config = config['dev-oracle']
+    output_config = config['output']
+    input_config = config['input']
+
+    hostname = oracle_config.get('dsn_hostname', 'localhost')
+    port = int(oracle_config.get('dsn_port', '1521'))
+    user = oracle_config.get('dsn_uid', 'username')
+    password = oracle_config.get('dsn_pwd', 'password')
+    service_name = oracle_config.get('dsn_database', 'ORCL')
+
+    dsn_tns = cx_Oracle.makedsn(hostname, port, service_name=service_name)
+    
+    query = """SELECT
+    de.table_name,
+    de.database_name,
+    de.column_name,
+    rd.rule_name,
+    rd.rule_def_id,
+    dr.rule_status,
+    COUNT(*) as cnt
+FROM
+    data_element de
+LEFT JOIN
+    rule_mapping rm ON de.de_id = rm.deid
+LEFT JOIN
+    rule_def rd ON rm.rule_def_id = rd.rule_def_id AND rm.rule_def_version_id = rd.version_id
+LEFT JOIN
+    (
+        SELECT
+            dr1.rule_map_id,
+            dr1.rule_map_version_id,
+            dr1.rule_status,
+            dr1.created_ts,
+            dr1.wf_exec_id,
+            dr1.dq_freq_id
+        FROM
+            dq_result dr1
+        JOIN
+            (
+                SELECT
+                    rule_map_id,
+                    rule_map_version_id,
+                    MAX(created_ts) AS created_ts
+                FROM
+                    dq_result
+                GROUP BY
+                    rule_map_id,
+                    rule_map_version_id,
+                    created_ts
+            ) dr2 ON dr1.rule_map_id = dr2.rule_map_id
+                AND dr1.rule_map_version_id = dr2.rule_map_version_id
+                AND dr1.created_ts = dr2.created_ts
+    ) dr ON rm.rule_map_id = dr.rule_map_id
+        AND rm.version_id = dr.rule_map_version_id
+WHERE
+    rd.is_active = 1
+    -- AND de.table_name = 'transaction'
+    -- AND de.database_name = ...
+    -- Uncomment and modify the WHERE clause based on your specific conditions
+-- FETCH FIRST 50 ROWS ONLY;
+"""
+
+    conn = cx_Oracle.connect(user=user, password=password, dsn=dsn_tns)
+
+    query = "SELECT * FROM your_table"
+    df = pd.read_sql(query, conn)
+
+    df['all_rules'] = df.apply(lambda row: f"{row['RULE_DEF_ID']}:{row['RULE_NAME']}:{row['RULE_DESC']}:{row['RULE_STATUS']}", axis=1)
+    df['passcnt'] = df.apply(lambda row: 0 if row['RULE_STATUS'] == 'Fail' else 1, axis=1)
+    df['failcnt'] = df.apply(lambda row: 1 if row['RULE_STATUS'] == 'Fail' else 0, axis=1)
+    df['notExec'] = df.apply(lambda row: 1 if row['RULE_STATUS'] == 'Not Executed' else 0, axis=1)
+    df['total_count'] = 1
+    df['passPercentage'] = round((df['passcnt'] / df['total_count']) * 100, 8)
+
+    grouped_df = df.groupby(['TABLE_NAME', 'DATABASE_NAME', 'COLUMN_NAME']).agg(
+        all_rules=('all_rules', lambda x: '||'.join(x)),
+        passcnt=('passcnt', 'sum'),
+        failcnt=('failcnt', 'sum'),
+        notExec=('notExec', 'sum'),
+        total_count=('total_count', 'sum'),
+        passPercentage=('passPercentage', 'mean')
+    ).reset_index()
+
+    for col in grouped_df.select_dtypes(include=['datetime64']).columns:
+        grouped_df[col] = grouped_df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    result_df = {col:grouped_df.tolist() for col in grouped_df.columns}
+    json_data = json.dumps(result_df)
+
+    conn.close()
+
+    return json_data
+
+def merge_json(oracle_json, hive_json, result):
+    output_json = []
+
+    oracle_data = json.loads(oracle_json)
+
+    with open(hive_json, 'r') as hive_file:
+        hive_data = json.load(hive_file)
+
+    for hive_table in hive_data:
+        table_name = hive_table["tableName"]
+        if table_name in oracle_data["TABLE_NAME"]:
+            column_na_indices = [idx for idx, col in enumerate(zip(oracle_data["TABLE_NAME"], oracle_data["COLUMN_NAME"]))
+                                 if col[1].lower() == "na" and col[0] == table_name][0]
+
+            passCnt = oracle_data["passcnt"][column_na_indices] if column_na_indices >= 0 else ""
+            failCnt = oracle_data["failcnt"][column_na_indices] if column_na_indices >= 0 else ""
+            totalCnt = oracle_data["total_count"][column_na_indices] if column_na_indices >= 0 else ""
+            notExec = oracle_data["notExec"][column_na_indices] if column_na_indices >= 0 else ""
+            passPer = oracle_data["passPercentage"][column_na_indices] if column_na_indices >= 0 else ""
+
+            table_details = {
+                "tableId": hive_table["tableId"],
+                "tableName": table_name,
+                "RequestId": hive_table["RequestId"],
+                "AITNumber": hive_table["AITNumber"],
+                "application": "DQ4QD",
+                "ruleDetails": {
+                    "passCount": passCnt,
+                    "failCount": failCnt,
+                    "totalCount": totalCnt,
+                    "notExec": notExec,
+                    "passPercentage": passPer,
+                    "rules": []
+                },
+                "columns": []
+            }
+
+            rules = oracle_data["all_rules"][column_na_indices].split('||')
+            for rule in rules:
+                rule_info = {
+                    "rule_def_Id": rule.split(":")[0],
+                    "rule_name": rule.split(":")[1]
+                }
+                table_details["ruleDetails"]["rules"].append(rule_info)
+
+            for hive_column in hive_table["columns"]:
+                column_name = hive_column["columnName"]
+                data_type = hive_column["data_type"]
+                column_indices = [idx for idx, col in enumerate(zip(oracle_data["TABLE_NAME"], oracle_data["COLUMN_NAME"]))
+                                  if col[1].lower() == column_name.lower() and col[0] == table_name][0] if len(column_na_indices) > 0 else -1
+
+                passCnt = oracle_data["passcnt"][column_indices] if column_indices >= 0 else ""
+                failCnt = oracle_data["failcnt"][column_indices] if column_indices >= 0 else ""
+                totalCnt = oracle_data["total_count"][column_indices] if column_indices >= 0 else ""
+                notExec = oracle_data["notExec"][column_indices] if column_indices >= 0 else ""
+                passPer = oracle_data["passPercentage"][column_indices] if column_indices >= 0 else ""
+
+                hive_col_rule_details = {
+                    "columnName": column_name,
+                    "data_type": data_type,
+                    "ruleDetails": {
+                        "passCount": passCnt,
+                        "failCount": failCnt,
+                        "totalCount": totalCnt,
+                        "notExec": notExec,
+                        "passPercentage": passPer,
+                        "rules": [],
+                    },
+                    "comment": hive_column["comment"]
+                }
+
+                rules = oracle_data["all_rules"][column_indices].split('||')
+                for rule in rules:
+                    c_rule_details = {
+                        "rule def_Id": rule.split(":")[0],
+                        "rule name": rule.split(":")[1]
+                    }
+                    hive_col_rule_details["ruleDetails"]["rules"].append(c_rule_details)
+
+                table_details["columns"].append(hive_col_rule_details)
+
+                for key, value in hive_column.items():
+                    if key not in hive_col_rule_details:
+                        hive_col_rule_details[key] = value
+
+            output_json.append(table_details)
+
+    with open(result, 'w') as file:
+        json.dump(output_json, file, indent=2)
+
+if __name__ == "__main__":
+    main()
