@@ -1,0 +1,66 @@
+import cx_Oracle
+import json
+import pandas as pd
+import os
+import configparser
+
+def main():
+    res_json = read_from_oracle_and_write_to_json()
+    final_json = "final_result.json"
+    write_to_json(res_json, final_json)
+
+def read_from_oracle_and_write_to_json():
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
+    oracle_config = config['dev-oracle']
+    output_config = config['output']
+    input_config = config['input']
+
+    hostname = oracle_config.get('dsn_hostname', 'localhost')
+    port = int(oracle_config.get('dsn_port', '1521'))
+    user = oracle_config.get('dsn_uid', 'username')
+    password = oracle_config.get('dsn_pwd', 'password')
+    service_name = oracle_config.get('dsn_database', 'ORCL')
+
+    dsn_tns = cx_Oracle.makedsn(hostname, port, service_name=service_name)
+
+    query_file = input_config.get('query_file', 'query.sql')
+
+    with open(query_file, 'r') as file:
+        query = file.read()
+
+    conn = cx_Oracle.connect(user=user, password=password, dsn=dsn_tns)
+    df = pd.read_sql(query, conn)
+
+    df['all_rules'] = df.apply(lambda row: f"{row['RULE_DEF_ID']}:{row['RULE_NAME']}:{row['RULE_DESC']}:{row['RULE_STATUS']}", axis=1)
+    df['passcnt'] = df.apply(lambda row: 0 if row['RULE_STATUS'] == 'Fail' else 1, axis=1)
+    df['failcnt'] = df.apply(lambda row: 1 if row['RULE_STATUS'] == 'Fail' else 0, axis=1)
+    df['notExec'] = df.apply(lambda row: 1 if row['RULE_STATUS'] == 'Not Executed' else 0, axis=1)
+    df['total_count'] = 1
+    df['passPercentage'] = round((df['passcnt'] / df['total_count']) * 100, 8)
+
+    grouped_df = df.groupby(['TABLE_NAME', 'DATABASE_NAME', 'COLUMN_NAME']).agg(
+        all_rules=('all_rules', lambda x: '||'.join(x)),
+        passcnt=('passcnt', 'sum'),
+        failcnt=('failcnt', 'sum'),
+        notExec=('notExec', 'sum'),
+        total_count=('total_count', 'sum'),
+        passPercentage=('passPercentage', 'mean')
+    ).reset_index()
+
+    for col in grouped_df.select_dtypes(include=['datetime64']).columns:
+        grouped_df[col] = grouped_df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    result_df = grouped_df.to_dict(orient='records')
+
+    conn.close()
+
+    return result_df
+
+def write_to_json(data, output_file):
+    with open(output_file, 'w') as file:
+        json.dump(data, file, indent=2)
+
+if __name__ == "__main__":
+    main()
