@@ -1,0 +1,31 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, round
+
+# Assuming you already have a SparkSession
+# spark = SparkSession.builder.appName("YourAppName").getOrCreate()
+
+# Load data into a PySpark DataFrame (replace 'your_table' and 'conn' accordingly)
+query = "SELECT * FROM your_table"
+df = spark.read.format("jdbc").option("url", "jdbc:your_database_connection_url").option("dbtable", f"({query}) as tmp").load()
+
+# Transformation
+df = df.withColumn('all_rules', 
+                  col('RULE_DEF_ID').cast('string') + ':' + col('RULE_NAME') + ':' + col('RULE_DESC') + ':' + col('RULE_STATUS'))
+df = df.withColumn('passcnt', (col('RULE_STATUS') == 'Fail').cast('int'))
+df = df.withColumn('failcnt', (col('RULE_STATUS') == 'Fail').cast('int'))
+df = df.withColumn('notExec', (col('RULE_STATUS') == 'Not Executed').cast('int'))
+df = df.withColumn('total_count', 1)
+df = df.withColumn('passPercentage', round((col('passcnt') / col('total_count')) * 100, 8))
+
+# Grouping
+grouped_df = df.groupBy('TABLE_NAME', 'DATABASE_NAME', 'COLUMN_NAME').agg(
+    F.concat_ws('||', F.collect_list('all_rules')).alias('all_rules'),
+    F.sum('passcnt').alias('passcnt'),
+    F.sum('failcnt').alias('failcnt'),
+    F.sum('notExec').alias('notExec'),
+    F.sum('total_count').alias('total_count'),
+    F.mean('passPercentage').alias('passPercentage')
+)
+
+# Show the result
+grouped_df.show()
