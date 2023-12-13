@@ -1,0 +1,55 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, to_date, struct
+import configparser
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("DQUpdater").getOrCreate()
+
+# Read Oracle connection details from config.ini
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+oracle_config = config['dev-oracle']
+output_config = config['output']
+input_config = config['input']
+
+hostname = oracle_config.get('dsn_hostname', 'localhost')
+port = int(oracle_config.get('dsn_port', '1521'))
+user = oracle_config.get('dsn_uid', 'username')
+password = oracle_config.get('dsn_pwd', 'password')
+service_name = oracle_config.get('dsn_database', 'ORCL')
+
+# Read stats table
+stats_df = spark.read.format("jdbc").option("url", f"jdbc:oracle:thin:@{hostname}:{port}/{service_name}") \
+    .option("dbtable", "stats_table").option("user", user).option("password", password).load()
+
+# Fetch last successful execution timestamp for the harvesting Job from stats table T1
+t1 = stats_df.filter(col("JOB_NAME") == "YourHarvestingJobName") \
+    .select("END_TIME").orderBy("END_TIME", ascending=False).first()["END_TIME"]
+
+# Read DQ4QD table
+dq_df = spark.read.format("jdbc").option("url", f"jdbc:oracle:thin:@{hostname}:{port}/{service_name}") \
+    .option("dbtable", "DQ4QD").option("user", user).option("password", password).load()
+
+# Fetch max update timestamp (T2) from DQ4QD table
+t2 = dq_df.select(col("UPDATED_TS").alias("max_update_time")).groupBy().agg({"max_update_time": "max"}).first()["max_update_time"]
+
+# Fetch data from DQ4QD table in range T1 < update_time <= T2
+filtered_dq_df = dq_df.filter((col("UPDATED_TS") > t1) & (col("UPDATED_TS") <= t2))
+
+# Aggregate the DQ scores based on the 'Attributes from DQ4QD' section
+agg_dq_df = filtered_dq_df.groupBy(
+    "attribute1", "attribute2",
+    "ruleDetails.passCount", "ruleDetails.failCount", "ruleDetails.totalCount",
+    "ruleDetails.notExecuted", "ruleDetails.passPercentage", "ruleDetails.application"
+).agg(
+    sum("DQ_SCORE").alias("TOTAL_DQ_SCORE"),
+    avg("DQ_SCORE").alias("AVG_DQ_SCORE"),
+    struct(col("ruleDetails.rules.id").alias("rule_id"), col("ruleDetails.rules.name").alias("rule_name")).alias("rules")
+)
+
+# Display the aggregated DQ scores
+agg_dq_df.show(truncate=False)
+
+# Stop Spark session
+spark.stop()
