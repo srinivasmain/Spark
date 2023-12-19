@@ -27,3 +27,9 @@ max_updated_ts_df.show(truncate=False)
 
 # Stop the Spark session
 spark.stop()
+
+
+# Filter the DataFrame to get the maximum timestamp for specific conditions
+max_updated_ts_df = df.filter((col("JOB_NAME") == "abc") & (col("JOB_STATUS") == "successful")) \
+    .agg({"UPDATED_TS": "max"}) \
+    .select(date_format(max("max(UPDATED_TS)"), "MM/dd/yyyy hh:mm:ss.SSS a").alias("MAX_UPDATED_TS"))
