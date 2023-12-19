@@ -1,0 +1,29 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+# Create a Spark session
+spark = SparkSession.builder.appName("OracleMaxTimestampRead").getOrCreate()
+
+# Define JDBC connection properties
+jdbc_url = "jdbc:oracle:thin:@//your_oracle_host:your_port/your_service"
+jdbc_properties = {
+    "user": "your_username",
+    "password": "your_password",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+# Define your SQL query to retrieve the max timestamp for specific conditions
+sql_query = """
+    SELECT TO_CHAR(MAX(UPDATED_TS), 'MM/DD/YYYY HH:MI:SS.FF3 AM') AS MAX_UPDATED_TS
+    FROM your_table
+    WHERE JOB_NAME = 'abc' AND JOB_STATUS = 'successful'
+"""
+
+# Read data from Oracle using the JDBC connection and SQL query
+max_updated_ts_df = spark.read.format("jdbc").option("url", jdbc_url).options(**jdbc_properties).option("dbtable", f"({sql_query}) as query").load()
+
+# Show the DataFrame
+max_updated_ts_df.show(truncate=False)
+
+# Stop the Spark session
+spark.stop()
