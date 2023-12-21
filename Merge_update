@@ -1,0 +1,25 @@
+# Define the SQL merge statement
+merge_data_qul_sum_statement = f"""
+MERGE INTO MDSDCM.DATA_QUAL_SUM USING data_qul_sum_df
+ON (MDSDCM.DATA_QUAL_SUM.DATA_QUAL_ID = data_qul_sum_df.DATA_QUAL_ID AND
+    MDSDCM.DATA_QUAL_SUM.AST_ID = data_qul_sum_df.AST_ID)
+WHEN MATCHED THEN
+    UPDATE SET MDSDCM.DATA_QUAL_SUM.UPDT_BTCH_ID = {updt_btch_id},
+               MDSDCM.DATA_QUAL_SUM.UPDT_NM = '{updt_nm}',
+               MDSDCM.DATA_QUAL_SUM.UPDT_TS = current_timestamp(),
+               MDSDCM.DATA_QUAL_SUM.DQ_PASS_CNT = data_qul_sum_df.DQ_PASS_CNT,
+               MDSDCM.DATA_QUAL_SUM.DQ_FAIL_CNT = data_qul_sum_df.DQ_FAIL_CNT,
+               MDSDCM.DATA_QUAL_SUM.DQ_NEXD_CNT = data_qul_sum_df.DQ_NEXD_CNT,
+               MDSDCM.DATA_QUAL_SUM.DQ_TOTAL_CNT = data_qul_sum_df.DQ_TOTAL_CNT,
+               MDSDCM.DATA_QUAL_SUM.DQ_PASS_PER = data_qul_sum_df.DQ_PASS_PER
+WHEN NOT MATCHED THEN
+    INSERT (DATA_QUAL_ID, AST_ID, CREAT_BTCH_ID, CREAT_NM, CREAT_TS, UPDT_BTCH_ID, UPDT_NM, UPDT_TS,
+            DQ_PASS_CNT, DQ_FAIL_CNT, DQ_NEXD_CNT, DQ_TOTAL_CNT, DQ_PASS_PER)
+    VALUES (data_qul_sum_df.DATA_QUAL_ID, data_qul_sum_df.AST_ID, data_qul_sum_df.CREAT_BTCH_ID,
+            data_qul_sum_df.CREAT_NM, data_qul_sum_df.CREAT_TS, {updt_btch_id}, '{updt_nm}', current_timestamp(),
+            data_qul_sum_df.DQ_PASS_CNT, data_qul_sum_df.DQ_FAIL_CNT, data_qul_sum_df.DQ_NEXD_CNT,
+            data_qul_sum_df.DQ_TOTAL_CNT, data_qul_sum_df.DQ_PASS_PER)
+"""
+
+# Execute the merge statement
+spark.sql(merge_data_qul_sum_statement)
