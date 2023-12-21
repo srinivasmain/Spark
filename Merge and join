@@ -1,0 +1,115 @@
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+# Create a Spark session
+spark = SparkSession.builder.appName("OracleIntegration").getOrCreate()
+
+# Define the Oracle JDBC connection properties
+oracle_properties = {
+    "url": "jdbc:oracle:thin:@<oracle_host>:<oracle_port>:<oracle_sid>",
+    "user": "<your_username>",
+    "password": "<your_password>",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+# Create a DataFrame with your data
+data = [(1, "John", 50000, "2023-01-01"),
+        (2, "Jane", 60000, "2023-01-01"),
+        # Add more data as needed
+       ]
+
+columns = ["id", "name", "salary", "updated"]
+df = spark.createDataFrame(data, columns)
+
+# Read existing data from the Oracle table
+existing_data = spark.read \
+    .format("jdbc") \
+    .option("url", oracle_properties["url"]) \
+    .option("dbtable", "employee") \
+    .option("user", oracle_properties["user"]) \
+    .option("password", oracle_properties["password"]) \
+    .option("driver", oracle_properties["driver"]) \
+    .load()
+
+# Define the condition for identifying existing records based on the 'id' column
+condition = [df.id == existing_data.id]
+
+# Perform a left outer join to identify existing records
+merged_df = df.join(existing_data, condition, "left_outer")
+
+# Use the 'coalesce' function to prioritize values from the original DataFrame if a match is found
+final_df = merged_df.withColumn("name", F.coalesce(existing_data.name, df.name)) \
+    .withColumn("salary", F.coalesce(existing_data.salary, df.salary)) \
+    .withColumn("updated", F.coalesce(existing_data.updated, df.updated))
+
+# Select only the required columns for the final DataFrame
+final_df = final_df.select("id", "name", "salary", "updated")
+
+# Write the final DataFrame back to the Oracle table, using the "overwrite" mode
+final_df.write \
+    .format("jdbc") \
+    .option("url", oracle_properties["url"]) \
+    .option("dbtable", "employee") \
+    .option("user", oracle_properties["user"]) \
+    .option("password", oracle_properties["password"]) \
+    .option("driver", oracle_properties["driver"]) \
+    .mode("overwrite") \
+    .save()
+≠===================================
+
+from pyspark.sql import SparkSession
+
+# Create a Spark session
+spark = SparkSession.builder.appName("OracleIntegration").getOrCreate()
+
+# Define the Oracle JDBC connection properties
+oracle_properties = {
+    "url": "jdbc:oracle:thin:@<oracle_host>:<oracle_port>:<oracle_sid>",
+    "user": "<your_username>",
+    "password": "<your_password>",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+# Define the schema for the DataFrame
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+
+schema = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("name", StringType(), True),
+    StructField("salary", IntegerType(), True),
+    StructField("updated", StringType(), True),
+])
+
+# Create a DataFrame with your data
+data = [(1, "John", 50000, "2023-01-01"),
+        (2, "Jane", 60000, "2023-01-01"),
+        # Add more data as needed
+       ]
+
+columns = ["id", "name", "salary", "updated"]
+df = spark.createDataFrame(data, schema=schema)
+
+# Define the Oracle table name
+oracle_table = "employee"
+
+# Create a temporary view for the DataFrame
+df.createOrReplaceTempView("temp_table")
+
+# Define the SQL merge statement
+merge_statement = f"""
+    MERGE INTO {oracle_table} USING temp_table
+    ON ({oracle_table}.id = temp_table.id)
+    WHEN MATCHED THEN
+        UPDATE SET {oracle_table}.name = temp_table.name,
+                   {oracle_table}.salary = temp_table.salary,
+                   {oracle_table}.updated = temp_table.updated
+    WHEN NOT MATCHED THEN
+        INSERT ({columns})
+        VALUES ({", ".join("temp_table." + col for col in columns)})
+"""
+
+# Execute the merge statement
+spark.sql(merge_statement)
+
+# Note: Replace <oracle_host>, <oracle_port>, <oracle_sid>, <your_username>, and <your_password> with your Oracle database connection details.
+
