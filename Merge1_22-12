@@ -1,0 +1,63 @@
+from pyspark.sql import SparkSession
+
+# Create a Spark session
+spark = SparkSession.builder.appName("OracleIntegration").getOrCreate()
+
+# Define the Oracle JDBC connection properties
+oracle_properties = {
+    "url": "jdbc:oracle:thin:@<oracle_host>:<oracle_port>:<oracle_sid>",
+    "user": "<your_username>",
+    "password": "<your_password>",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+# Define the schema for the DataFrame
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+
+schema = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("name", StringType(), True),
+    StructField("salary", IntegerType(), True),
+    StructField("updated", StringType(), True),
+])
+
+# Create a DataFrame with your data
+data = [(1, "John", 50000, "2023-01-01"),
+        (2, "Jane", 60000, "2023-01-01"),
+        # Add more data as needed
+       ]
+
+columns = ["id", "name", "salary", "updated"]
+df = spark.createDataFrame(data, schema=schema)
+
+# Define the Oracle table name
+oracle_table = "employee"
+
+# Create a temporary view for the DataFrame
+df.createOrReplaceTempView("temp_table")
+
+# Define the SQL merge statement using placeholders
+merge_statement = f"""
+    MERGE INTO {oracle_table} USING temp_table
+    ON ({oracle_table}.id = temp_table.id)
+    WHEN MATCHED THEN
+        UPDATE SET {oracle_table}.name = temp_table.name,
+                   {oracle_table}.salary = temp_table.salary,
+                   {oracle_table}.updated = temp_table.updated
+    WHEN NOT MATCHED THEN
+        INSERT ({", ".join(columns)})
+        VALUES ({", ".join(["?"] * len(columns))})
+"""
+
+# Execute the merge statement with parameters
+spark.sql(merge_statement).write \
+    .format("jdbc") \
+    .option("url", oracle_properties["url"]) \
+    .option("dbtable", oracle_table) \
+    .option("user", oracle_properties["user"]) \
+    .option("password", oracle_properties["password"]) \
+    .option("driver", oracle_properties["driver"]) \
+    .mode("overwrite") \
+    .save()
+
+# Note: Replace <oracle_host>, <oracle_port>, <oracle_sid>, <your_username>, and <your_password> with your Oracle database connection details.
