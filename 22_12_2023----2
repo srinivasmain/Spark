@@ -1,0 +1,39 @@
+# Import necessary libraries
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+import getpass
+import time
+
+# Create a Spark session
+spark = SparkSession.builder \
+    .config('spark.driver.extraClassPath', r'C:\Users\ZKNZYJ5\Documents\DCM_DQ4QD\src\scratch\jars\com_oracle_ojdbc8-12.2.0.1.jar') \
+    .config('spark.executor.extraClassPath', r'C:\Users\ZKNZYJ5\Documents\DCM DQ4QD\src\scratch\jars\com_oracle_ojdbc8-12.2.0.1.jar') \
+    .getOrCreate()
+
+# ... (Previous code remains unchanged)
+
+# Select only the required columns for the final DataFrame
+final_df = final_df.select(
+    "data_qul_sum_df.DATA_QUAL_ID", "data_qul_sum_df.AST_ID", "data_qul_sum_df.CREAT_BTCH_ID",
+    "data_qul_sum_df.CREAT_NM", "data_qul_sum_df.CREAT_TS", "data_qul_sum_df.UPDT_BTCH_ID",
+    "data_qul_sum_df.UPDT_NM", "data_qul_sum_df.UPDT_TS",
+    "data_qul_sum_df.DQ PASS_CNT", "data_qul_sum_df.DQ FAIL_CNT", "data_qul_sum_df.DQ_NEXD_CNT",
+    "data_qul_sum_df.DQ TOTAL_CNT", "data_qul_sum_df.DQ PASS PER"
+)
+
+print("-----after join on view2----")
+final_df.printSchema()
+final_df.show(20, False)
+
+# Write the final DataFrame back to the Oracle table, using the "overwrite" mode
+final_df.write \
+    .format("jdbc") \
+    .option("url", oracle_properties["url"]) \
+    .option("dbtable", "MDSDCM.DATA QUAL SUM") \
+    .option("user", oracle_properties["user"]) \
+    .option("password", oracle_properties["password"]) \
+    .option("driver", oracle_properties["driver"]) \
+    .mode("overwrite") \
+    .save()
+
+# ... (Remaining code remains unchanged)
