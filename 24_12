@@ -1,0 +1,224 @@
+import getpass
+import time
+from pyspark.sql.functions import substring, col, date, to_timestamp, when
+import pyspark
+from pyspark import SparkConf
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.functions import col, to_date, struct
+import configparser
+from pyspark import SparkContext
+import os
+import sys
+import json
+
+if __name__ == 'main':
+    config = configparser.ConfigParser()
+    config.read('jdbc.ini')
+    oracle_config = config['dev-oracle']
+    output_config = config['output']
+    input_config = config['input']
+
+    query_file = input_config.get('query_file', 'query.sql')
+    with open(query_file, 'r') as file:
+        query = file.read()
+
+    spark = SparkSession.builder.config(
+        'spark.driver.extraClassPath',
+        r"C:\Users\ZKNZYJ5\Documents\DCM_DQ4QD\src\scratch\jars\com_oracle ojdbc8-12.2.0.1.jar"
+    ).config(
+        'spark.executor.extraClassPath',
+        r"C:\Users\ZKNZYJ5\Documents\DCM DQ4QD\src\scratch\jars\com_oracle_ojdbc8-12.2.0-12.2*0.1.jar"
+    ).config('spark.sql.debug.maxToStringFields', 2000).config('spark.debug.maxToStringFields', 2000).getOrCreate()
+
+    oracle_properties = {
+        "url": "jdbc:oracle:thin:@//xtd06dbm03.sdi.corp.bankofamerica.com:49125/SBAMD01_SVC01",
+        "user": "MDSDCM",
+        "password": "mdsdcmd1#",
+        "driver": "oracle.jdbc.driver.OracleDriver"
+    }
+
+    stats_df = spark.read.format("jdbc").option("url", "jdbc:oracle:thin:@//xtd06dbm03.sdi.corp.bankofamerica.com:49125/SBAMD01_SVC01")\
+        .option("user", "MDSDCM")\
+        .option("password", "mdsdcmd1#")\
+        .option("dbtable", "job_status")\
+        .option("driver", "oracle.jdbc.driver.OracleDriver")\
+        .load()
+
+    max_to_ts_df = stats_df.filter((F.col("JOB NAME") == "DQ4QD_Harvesting"))\
+        .select(date_format("TO_TIMESTAMP", "MM/dd/yyyy hh:mm:ss.SSS a").alias("TO_TIMESTAMP"))\
+        .orderBy("TO_TIMESTAMP", ascending=False).first()["TO_TIMESTAMP"]
+
+    formatted_query = formatted_query.replace('?', "'{}'".format(max_to_ts_df))
+
+    ora_df = spark.read.format("jdbc")\
+        .option("url", "jdbc:oracle:thin:@//xtd06dbm03.sdi.corp.bankofamerica.com:49125/SBAMD01_SVC01")\
+        .option("user", "ZSBEML2D")\
+        .option("password", "B3crFljb")\
+        .option("dbtable", f"({formatted_query})")\
+        .option("driver", "oracle.jdbc.driver.OracleDriver")\
+        .load()
+
+    df = ora_df.withColumn('all rules', F.concat_ws(':', F.col('RULE_DEF_ID'), F.col('RULE_NAME'), F.col('RULE_DESC'), F.col('RULE_STATUS')))
+    df = df.withColumn('passent', (F.col('RULE_STATUS') == 'Pass').cast('int'))
+    df = df.withColumn('failent', (F.col('RULE STATUS') == 'Fail').cast('int'))
+    df = df.withColumn('notExec', when(((F.col('RULE STATUS') == 'Not Executed') | (F.col('RULE STATUS').isNull()) | (F.col('RULE_STATUS') == '')), F.lit(1)).otherwise(F.lit(0)).cast('int'))
+    df = df.withColumn('total count', F.lit(1))
+    df = df.withColumn('passPercentage', F.round((F.col('passcnt') / F.col('total_count')) * 100 8))
+
+    grouped_df = df.groupBy('TABLE_NAME', 'DATABASE_NAME', 'COLUMN_NAME').agg(
+        F.concat_ws('||', F.collect_list('all_rules')).alias('all_rules'),
+        F.sum('passcnt').alias('passent'),
+        F.sum('failcnt').alias('failcnt'),
+        F.sum('notExec').alias('notExec'),
+        F.sum('total_count').alias('total_count'),
+        F.mean('passPercentage').alias('passPercentage')
+    )
+
+    joined_df = df.join(grouped_df, ['TABLE NAME', 'DATABASE_NAME', 'COLUMN_NAME'])\
+        .select("TABLE NAME", "DATABASE_NAME", "COLUMN NAME", "RULE DEF_ID", "RULE NAME", "RULE DESC", grouped_df["passent"],
+                grouped_df["failent"], grouped_df["notExec"], grouped_df["total_count"], grouped_df["passPercentage"])
+
+    joined_df = joined_df.withColumn("CREAT TS", F.current_timestamp())\
+        .withColumn("CREAT NM", F.lit(getpass.getuser()))\
+        .withColumn("CREAT BTCH_ID", F.lit(str(int(time.time()))))
+
+    ast_query = """select * from MDSDCM.V ASSET HIERARCHY"""
+    ast_df = spark.read.format("jdbc").option("url", "jdbc:oracle:thin:@//xtd06dbm03.sdi.corp.bankofamerica.com:49125/SBAMD01_SVC01")\
+        .option("user", "MDSDCM")\
+        .option("password", "mdsdcmd1#")\
+        .option("dbtable", f"({ast_query)})")\
+        .option("driver", "oracle.jdbc.driver.OracleDriver")\
+        .load()
+
+    ast_joined_df = joined_df.join(ast_df, (joined_df["COLUMN NAME"] == ast_df["AST_NM"]) &
+                                   (joined_df["TABLE NAME"] == ast_df["SOURCE_NAME_LVL1"]) &
+                                   (joined_df["DATABASE_NAME"] == ast_df["SOURCE_NAME_LVL2"]),
+                                   "left")
+
+    ast_joined_df = ast_joined_df.withColumn("DATA_QUAL_ID", F.lit(0))\
+        .withColumn("UPDT BTCH_ID", F.lit(str(int(time.time()))))\
+        .withColumn("UPDT_NM", F.lit(getpass.getuser()))\
+        .withColumn("UPDT TS", F.current_timestamp())\
+        .withColumn("DATA QUAL RULE ID", F.lit(0))
+
+    data_qul_sum_df = ast_joined_df.select("DATA_QUAL_ID", "AST_ID", "CREAT_BTCH_ID", "CREAT_NM", "CREAT_TS", "UPDT_BTCH_ID",
+                                           "UPDT_NM", "UPDT_TS", "DATA_QUAL_RULE_ID", ast_joined_df["passcnt"].alias("DQ_PASS_CNT"),
+                                           ast_joined_df["failcnt"].alias("DQ_FAIL_CNT"), ast_joined_df["notExec"].alias("DQ_NEXD_CNT"),
+                                           ast_joined_df["total_count"].alias("DQ_TOTAL_CNT"), ast_joined_df["passPercentage"].alias("DQ_PASS PER"),
+                                           ast_joined_df["RULE_DEF_ID"].alias("DQ_RULE_ID"), ast_joined_df["RULE_NAME"].alias("DQ_RULE_NM"),
+                                           ast_joined_df["RULE_DESC"])
+
+    print("after join on viewl----")
+
+    existing_data = spark.read.format("jdbc").option("url", oracle_properties["url"])\
+        .option("dbtable", "MDSDCM.DATA QUAL SUM")\
+        .option("user", oracle_properties["user"])\
+        .option("password", oracle_properties["password"])\
+        .option("driver", oracle_properties["driver"])\
+        .load()
+
+    existing_data.createOrReplaceTempView("DATA QUAL_SUM")
+
+    merged_df = data_qul_sum_df.join(existing_data,
+                                     (data_qul_sum_df["DATA_QUAL_ID"] == existing_data["DATA QUAL_ID"]) &
+                                     (data_qul_sum_df["AST_ID"] == existing_data["AST_ID"]),
+                                     "left")\
+        .select(data_qul_sum_df["*"], existing_data["UPDT_BTCH_ID"].alias("right_UPDT_BTCH_ID"),
+                existing_data["UPDT_NM"].alias("right_UPDT_NM"),
+                existing_data["UPDT_TS"].alias("right_UPDT_TS"),
+                existing_data["DQ_PASS_CNT"].alias("right DQ PASS CNT"),
+                existing_data["DQ_FAIL_CNT"].alias("right_DQ_FAIL_CNT"),
+                existing_data["DQ_NEXD_CNT"].alias("right_DQ_NEXD_CNT"),
+                existing_data["DQ_TOTAL_CNT"].alias("right_DQ_TOTAL_CNT"),
+                existing_data["DQ_PASS PER"].alias("right_DQ_PASS_PER"),
+                existing_data["DATA_QUAL_ID"].alias("right_DATA_QUAL_ID"),
+                existing_data["AST_ID"].alias("right AST ID"),
+                existing_data["CREAT_BTCH_ID"].alias("right_CREAT_BTCH_ID"),
+                existing_data["CREAT_NM"].alias("right_CREAT_NM"),
+                existing_data["CREAT_TS"].alias("right_CREAT_TS"))
+
+    print("merged_df-----")
+
+    merged_df.printSchema()
+    merged_df.show()
+
+    final_df = merged_df.withColumn("UPDT_BTCH_ID", F.coalesce(col("right_UPDT_BTCH_ID"), col("UPDT_BTCH_ID")))\
+        .withColumn("UPDT_NM", F.coalesce(col("right UPDT NM"), col("UPDT NM")))\
+        .withColumn("UPDT_TS", F.coalesce(col("right_UPDT_TS"), col("UPDT TS")))\
+        .withColumn("DQ_PASS_CNT", F.coalesce(col("right DQ PASS CNT"), col("DQ_PASS_CNT")))\
+        .withColumn("DO FAIL CNT", F.coalesce(col("right CREAT BTCH ID"), col("DQ_FAIL_CNT")))\
+        .withColumn("DQ_NEXD_CNT", F.coalesce(col("right_DQ_NEXD CNT"), col("DQ_NEXD_CNT")))\
+        .withColumn("DQ TOTAL CNT", F.coalesce(col("right DO TOTAL CNT"), col("DQ_TOTAL_CNT")))\
+        .withColumn("DQ PASS_PER", F.coalesce(col("right DQ PASS PER"), col("DQ_PASS PER")))
+
+    print("final_df-----")
+    final_df.printSchema()
+    final_df.show(20, False)
+
+    final_df = final_df.select("DATA_QUAL_ID", "AST_ID", "CREAT_BTCH_ID", "CREAT_NM", "CREAT_TS", "UPDT_BTCH_ID", "UPDT_NM", "UPDT TS",
+                               "DQ_PASS_CNT", "DQ FAIL CNT", "DQ_NEXD CNT", "DQ_TOTAL_CNT", "DQ_PASS_PER")
+
+    # Write the final DataFrame back to the Oracle table, using the "overwrite" mode
+    final_df.write.format("jdbc")\
+        .option("url", oracle_properties["url"])\
+        .option("dbtable", "MDSDCM.DATA_QUAL SUM")\
+        .option("user", oracle_properties["user"])\
+        .option("password", oracle_properties["password"])\
+        .option("driver", oracle_properties["driver"])\
+        .mode("append")\
+        .save()
+
+    # Read existing data from the Oracle table
+    rul_existing_data = spark.read.format("jdbc")\
+        .option("url", oracle_properties["url"])\
+        .option("dbtable", "MDSDCM.DATA QUAL_RULES")\
+        .option("user", oracle_properties["user"])\
+        .option("password", oracle_properties["password"])\
+        .option("driver", oracle_properties["driver"])\
+        .load()
+
+    rul_existing_data.createOrReplaceTempView("DATA QUAL RULES")
+
+    data_qul_sum_df.printSchema()
+    rul_existing_data.printSchema()
+    rul_existing_data.show()
+
+    rul_merged_df = data_qul_sum_df.join(rul_existing_data,
+                                         (data_qul_sum_df["DATA_QUAL_ID"] == rul_existing_data["DATA QUAL ID"]) &
+                                         (data_qul_sum_df["DATA_QUAL_RULE_ID"] == rul_existing_data["DATA QUAL RULE ID"]),
+                                         "left")\
+        .select(data_qul_sum_df["*"], rul_existing_data["UPDT_BTCH_ID"].alias("right_UPDT_BTCH_ID"),
+                rul_existing_data["UPDT_NM"].alias("right_UPDT_NM"),
+                rul_existing_data["UPDT TS"].alias("right_UPDT_TS"),
+                rul_existing_data["DATA QUAL RULE ID"].alias("right_DATA_QUAL_RULE_ID"),
+                rul_existing_data["DATA QUAL ID"].alias("right_DATA QUAL_ID"),
+                rul_existing_data["DQ_RULE_ID"].alias("right DQ_RULE_ID"),
+                rul_existing_data["DQ RULE NM"].alias("right DQ RULE_NM"))
+
+    print("merged_df-----")
+
+    rul_final_df = rul_merged_df.withColumn("UPDT_BTCH_ID", F.coalesce(col("right UPDT BTCH ID"), col("UPDT BTCH ID")))\
+        .withColumn("UPDT NM", F.coalesce(col("right UPDT NM"), col("UPDT NM")))\
+        .withColumn("UPDT TS", F.coalesce(col("right UPDT_TS"), col("UPDT TS")))\
+        .withColumn("DQ_RULE_ID", F.coalesce(col("right DQ RULE ID"), col("DQ RULE ID")))\
+        .withColumn("DQ_RULE_NM", F.coalesce(col("right_DQ_RULE_NM"), col("DQ RULE NM")))
+
+    rul_final_df = rul_final_df.select("DATA QUAL RULE ID", "DATA QUAL ID", "DQ RULE ID", "DQ_RULE_NM", "CREAT_BTCH_ID",
+                                       "CREAT_NM", "CREAT_TS", "UPDT_BTCH_ID", "UPDT_NM", "UPDT_TS")
+
+    print("after join on view2----")
+    rul_final_df.printSchema()
+    # Write the final DataFrame back to the Oracle table, using the "overwrite" mode
+rul_final_df.write.format("jdbc")\
+    .option("url", oracle_properties["url"])\
+    .option("dbtable", "MDSDCM.DATA QUAL RULES")\
+    .option("user", oracle_properties["user"])\
+    .option("password", oracle_properties["password"])\
+    .option("driver", oracle_properties["driver"])\
+    .mode("append")\
+    .save()
+
+
+
+
