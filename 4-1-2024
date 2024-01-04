@@ -1,0 +1,158 @@
+from src.com.bofa.dcm.utilities import sparkDBUtility as sparkUtil
+from src.com.bofa.dcm.utilities import helperUtils as helper
+import pyspark.sql.functions as F
+from pyspark.sql.window import Window
+from src.com.bofa.dcm.properties import load_properties
+import json
+import configparser
+
+def fetch_start_end_time(dq_result_df, start_time):
+    if start_time is not None:
+        start_time_out = start_time
+        max_created_ts = dq_result_df.agg(F.max("created_ts").alias("end_time"))
+        end_time_out = max_created_ts.first()["end_time"]
+        return start_time_out, end_time_out
+    else:
+        min_max_df = dq_result_df.agg(F.min("created_ts").alias("start_time"), F.max("created_ts").alias("end_time")).first()
+        start_time_out = min_max_df["start_time"]
+        end_time_out = min_max_df["end_time"]
+        return start_time_out, end_time_out
+
+def get_aggregated_scores(dq_result_df):
+    pass_condition = F.col('rule status') == 'Pass'
+    fail_condition = F.col('rule_status') == 'Fail'
+    not_executed_condition = F.col('rule status') == 'Not Executed'
+
+    overall_window = Window.partitionBy('database_name', 'table_name')
+
+    dq_result_df = (
+        dq_result_df.groupby('database_name', 'table_name', 'column name')
+        .agg(
+            F.sum(F.when(pass_condition, 1).otherwise(0)).alias('pass count'),
+            F.sum(F.when(fail_condition, 1).otherwise(0)).alias('failed count'),
+            F.sum(F.when(not_executed_condition, 1).otherwise(0)).alias('not executed count'),
+            F.countDistinct('rule_def_id').alias('total_rules')
+        )
+    )
+
+    dq_result_df = dq_result_df.withColumn(
+        'pass_percentage',
+        F.round(
+            F.when(F.upper(F.col('column name')) == 'NA',
+                   F.sum(F.col('pass_count')).over(overall_window) / F.sum(F.col('total_rules')).over(overall_window))
+            .otherwise(F.col('pass_count') / F.col('total_rules')) * 100,
+            8
+        )
+    )
+
+    return dq_result_df
+
+def harvest_dq4qd(spark, from_time):
+    dq_result_df = sparkUtil.create_db_dataframe(spark, "dq", "rule result table")
+    dq_rule_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "rule table")
+    dq_agg_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "agg_table")
+    ast_hierarchy_df = sparkUtil.create_db_dataframe(spark, "dcm", "ast_hierarchy_table")
+
+    start_time, end_time = fetch_start_end_time(dq_result_df, from_time)
+    dq_result_df = dq_result_df.filter((F.col("created_ts") > start_time) & (F.col("created_ts") <= end_time))
+
+    dq_rule_df = dq_result_df.dropDuplicates(['table_name', 'database_name', 'column_name', 'rule_def_id'])
+    dq_result_df = get_aggregated_scores(dq_result_df)
+    num_of_records_fromDQ = dq_result_df.count()
+
+    database_condition, table_condition, column_condition = helper.get_ast_hierarchy_conditions(ast_hierarchy_df)
+    ast_hierarchy_df = (
+        ast_hierarchy_df.withColumn('database name', database_condition)
+        .withColumn('table name', table_condition)
+        .withColumn('column_name', column_condition)
+    )
+
+    dq_result_with_ast_id_df = dq_result_df.join(ast_hierarchy_df,
+                                                  (F.upper(dq_result_df['database name']) ==
+                                                   F.upper(ast_hierarchy_df['database name'])) &
+                                                  (F.upper(dq_result_df['table name']) ==
+                                                   F.upper(ast_hierarchy_df['table name'])) &
+                                                  (F.upper(dq_result_df['column_name']) ==
+                                                   F.upper(ast_hierarchy_df['column name'])),
+                                                  'inner')
+
+    assets_present_in_dcm_count = dq_result_with_ast_id_df.count()
+
+    dq_agg_df = dq_result_with_ast_id_df.select(
+        F.col('AST ID'),
+        F.col('pass_count'),
+        F.col('failed_count'),
+        F.col('not executed count'),
+        F.col('total rules'),
+        F.col('pass_percentage')
+    )
+
+    total_count_from_dq = dq_agg_df.count()
+    count_to_update_or_insert = dq_rule_df.count()
+
+    update_config = load_properties("dcm")
+    update_query_template = update_config["dq_agg_update_query"]["query"]
+
+    column_mapping = {key: value for key, value in update_config["dq_agg_update_query"].items() if key != "query"}
+    updates_dq_agg_df = dq_agg_df.join(dq_agg_table_df, 'ast_id', 'inner')
+    updates_dq_agg_df = updates_dq_agg_df.coalesce(2)
+
+    if updates_dq_agg_df.count() > 0:
+        updates_dq_agg_df = updates_dq_agg_df.toDF(*[col.lower() for col in updates_dq_agg_df.columns])
+
+        updates_dq_agg_df.foreachPartition(
+            lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
+        )
+
+    new_records_dq_agg_df = dq_agg_df.join(updates_dq_agg_df, 'ast_id', 'left anti')
+    new_records_dq_agg_df = new_records_dq_agg_df.coalesce(2)
+
+    new_records_dq_agg_df = new_records_dq_agg_df.withColumn('data_qual_id', F.expr('uuid()'))
+
+    sparkUtil.write_dataframe_to_db(new_records_dq_agg_df, "dcm", "agg_table")
+
+    final_dq_rule_df = dq_rule_with_ast_id_df.join(new_records_dq_agg_df, 'ast_id', 'inner').select(
+        F.col('data_qual_id'),
+        F.col('RULE_DEF_ID'),
+        F.col('RULE NAME')
+    ).union(updates_dq_rule_df)
+
+    updates_dq_rule_df = dq_rule_with_ast_id_df.join(dq_rule_table_df, 'data_qual_id', 'inner')
+    updates_dq_rule_df = updates_dq_rule_df.toDF(*[col.lower() for col in updates_dq_rule_df.columns])
+
+    update_config = load_properties("dcm")
+    update_query_template = update_config["dq_rule_delete_query"]["query_del"]
+
+    column_mapping = {key: value for key, value in update_config["dq_rule_delete_query"].items() if key != "query_del"}
+
+    updates_dq_rule_df.foreachPartition(
+        lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
+    )
+
+    new_records_dq_rule_df = dq_rule_df.join(updates_dq_rule_df, 'data_qual_id', 'left anti')
+
+    new_records_dq_rule_df = new_records_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
+
+    sparkUtil.write_dataframe_to_db(new_records_dq_rule_df, "dcm", "rule_table")
+
+    final_dq_rule_df = final_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
+
+    final_dq_rule_df = final_dq_rule_df.select(
+        F.col("data_qual_rule_id"),
+        F.col("data_qual_id"),
+        F.col("rule_def_id"),
+        F.col("rule_name"),
+        F.lit(1111).alias("creat_btch_id"),
+        F.lit("DQ4QD").alias("creat_nm"),
+        F.current_timestamp().alias("creat_ts"),
+        F.lit("").alias("updt_btch_id"),
+        F.lit("").alias("updt_nm"),
+        F.lit("").alias("updt_ts")
+    )
+
+    final_dq_rule_df.show()
+
+    stats = {"receivedFromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
+    json_stats = json.dumps(stats)
+
+    return start_time, end_time, json_stats
