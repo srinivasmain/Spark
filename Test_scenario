@@ -1,0 +1,103 @@
+import unittest
+from pyspark.sql import SparkSession
+from your_code_file import fetch_start_end_time, get_aggregated_scores, harvest_dq4qd
+
+class DQ4QDTest(unittest.TestCase):
+    def setUp(self):
+        self.spark = SparkSession.builder.master("local").appName("DQ4QDTest").getOrCreate()
+
+    def tearDown(self):
+        self.spark.stop()
+
+    def test_valid_input_data(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_missing_from_time(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = None
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_no_records_in_dq_result_df(self):
+        dq_result_data = []  # Provide an empty list for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_duplicates_in_dq_rule_df(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        dq_rule_df = dq_result_df.union(dq_result_df.limit(2))  # Introduce duplicates
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_empty_ast_hierarchy_df(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        ast_hierarchy_df = self.spark.createDataFrame([], schema=...)  # Empty DataFrame
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_non_matching_columns_in_ast_hierarchy_df(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        ast_hierarchy_df = ast_hierarchy_df.withColumnRenamed("column name", "non_matching_column")
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_records_for_update_and_insert_in_dq_agg_df(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        dq_agg_df = dq_result_df.select("AST ID", "pass_count", "failed_count", "not executed count", "total rules", "pass_percentage")
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_empty_result_after_joining_dq_result_df_and_ast_hierarchy_df(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        # Set conditions in fetch_start_end_time to result in an empty join
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+    def test_handling_partition_updates_in_update_records_function(self):
+        # Note: This scenario may require mocking the update_records function or adjusting it for testing.
+        pass
+
+    def test_valid_json_stats(self):
+        dq_result_data = [...]  # Provide valid data for dq_result_df
+        from_time = "2023-01-01 00:00:00"
+        dq_result_df = self.spark.createDataFrame(dq_result_data, schema=...)
+        # Load other relevant DataFrames
+        # ...
+        result = harvest_dq4qd(self.spark, from_time)
+        # Assert statements for expected output
+
+if __name__ == '__main__':
+    unittest.main()
