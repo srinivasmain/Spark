@@ -1,0 +1,247 @@
+import unittest
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+class OracleReadTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Set up a Spark session for the entire test case
+        cls.spark = SparkSession.builder \
+            .appName("OracleReadTest") \
+            .master("local[2]") \
+            .getOrCreate()
+
+    @classmethod
+    def tearDownClass(cls):
+        # Stop the Spark session after the entire test case is executed
+        cls.spark.stop()
+
+    def test_read_from_oracle(self):
+        # Input Oracle connection details
+        oracle_connection_properties = {
+            "url": "jdbc:oracle:thin:@//your_oracle_host:1521/your_service_name",
+            "user": "your_username",
+            "password": "your_password",
+            "driver": "oracle.jdbc.driver.OracleDriver"
+        }
+
+        # Specify the Oracle table to read
+        oracle_table = "your_table_name"
+
+        # Read data from Oracle into a DataFrame
+        df = self.spark.read \
+            .format("jdbc") \
+            .option("url", oracle_connection_properties["url"]) \
+            .option("dbtable", oracle_table) \
+            .option("user", oracle_connection_properties["user"]) \
+            .option("password", oracle_connection_properties["password"]) \
+            .option("driver", oracle_connection_properties["driver"]) \
+            .load()
+
+        # Perform assertions or validations on the DataFrame
+        self.assertTrue(df.count() > 0, "DataFrame should not be empty")
+
+        # Example validation: Ensure a specific column exists in the DataFrame
+        self.assertIn("your_column_name", df.columns, "Column should exist in DataFrame")
+
+        # Example validation: Ensure a specific condition is satisfied
+        self.assertTrue(df.filter(col("your_column_name") > 0).count() > 0, "Condition not satisfied")
+
+if __name__ == "__main__":
+    unittest.main()
+
+====≠========================================
+
+
+import unittest
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import max
+
+class MaxTimestampTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Set up a Spark session for the entire test case
+        cls.spark = SparkSession.builder \
+            .appName("MaxTimestampTest") \
+            .master("local[2]") \
+            .getOrCreate()
+
+    @classmethod
+    def tearDownClass(cls):
+        # Stop the Spark session after the entire test case is executed
+        cls.spark.stop()
+
+    def test_max_timestamp(self):
+        # Example DataFrame with a timestamp_column
+        data = [("2023-01-01 12:00:00",),
+                ("2023-01-02 15:30:00",),
+                ("2023-01-03 10:45:00",)]
+
+        columns = ["timestamp_column"]
+
+        df = self.spark.createDataFrame(data, columns)
+
+        # Find the maximum timestamp in the DataFrame
+        max_timestamp = df.agg(max("timestamp_column")).collect()[0][0]
+
+        # Assert that the max_timestamp is as expected
+        expected_max_timestamp = "2023-01-03 10:45:00"
+        self.assertEqual(max_timestamp, expected_max_timestamp, "Max timestamp does not match expected value")
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+=========================================
+import unittest
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, max
+
+class MaxTimestampComparisonTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Set up a Spark session for the entire test case
+        cls.spark = SparkSession.builder \
+            .appName("MaxTimestampComparisonTest") \
+            .master("local[2]") \
+            .getOrCreate()
+
+        # Input Oracle connection details
+        cls.oracle_connection_properties = {
+            "url": "jdbc:oracle:thin:@//your_oracle_host:1521/your_service_name",
+            "user": "your_username",
+            "password": "your_password",
+            "driver": "oracle.jdbc.driver.OracleDriver"
+        }
+
+        # Specify the Oracle table to read
+        cls.oracle_table = "your_table_name"
+
+    @classmethod
+    def tearDownClass(cls):
+        # Stop the Spark session after the entire test case is executed
+        cls.spark.stop()
+
+    def test_max_timestamp_comparison(self):
+        # Read data from Oracle into a PySpark DataFrame
+        df = self.spark.read \
+            .format("jdbc") \
+            .option("url", self.oracle_connection_properties["url"]) \
+            .option("dbtable", self.oracle_table) \
+            .option("user", self.oracle_connection_properties["user"]) \
+            .option("password", self.oracle_connection_properties["password"]) \
+            .option("driver", self.oracle_connection_properties["driver"]) \
+            .load()
+
+        # Find the maximum timestamp in the PySpark DataFrame
+        max_timestamp_spark = df.agg(max("timestamp_column")).collect()[0][0]
+
+        # Fetch the maximum timestamp from Oracle
+        max_timestamp_oracle = self._get_max_timestamp_from_oracle()
+
+        # Assert that the max_timestamp from Oracle matches the max_timestamp computed from PySpark DataFrame
+        self.assertEqual(max_timestamp_spark, max_timestamp_oracle, "Max timestamps do not match")
+
+    def _get_max_timestamp_from_oracle(self):
+        # Function to fetch the maximum timestamp from Oracle
+        from sqlalchemy import create_engine
+        import pandas as pd
+
+        # Create a SQLAlchemy engine for Oracle
+        oracle_engine = create_engine(
+            f"oracle+cx_oracle://{self.oracle_connection_properties['user']}:{self.oracle_connection_properties['password']}@{self.oracle_connection_properties['url']}",
+            echo=True
+        )
+
+        # Query to fetch the maximum timestamp from Oracle
+        query = f"SELECT MAX(timestamp_column) FROM {self.oracle_table}"
+
+        # Execute the query and fetch the result as a Pandas DataFrame
+        result_df = pd.read_sql_query(query, oracle_engine)
+
+        # Extract the maximum timestamp value
+        max_timestamp_oracle = result_df.iloc[0, 0]
+
+        return max_timestamp_oracle
+
+if __name__ == "__main__":
+    unittest.main()
+===============================================
+
+
+import unittest
+from pyspark.sql import SparkSession
+
+class RecordCountComparisonTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Set up a Spark session for the entire test case
+        cls.spark = SparkSession.builder \
+            .appName("RecordCountComparisonTest") \
+            .master("local[2]") \
+            .getOrCreate()
+
+        # Input Oracle connection details
+        cls.oracle_connection_properties = {
+            "url": "jdbc:oracle:thin:@//your_oracle_host:1521/your_service_name",
+            "user": "your_username",
+            "password": "your_password",
+            "driver": "oracle.jdbc.driver.OracleDriver"
+        }
+
+        # Specify the Oracle table to read
+        cls.oracle_table = "your_table_name"
+
+    @classmethod
+    def tearDownClass(cls):
+        # Stop the Spark session after the entire test case is executed
+        cls.spark.stop()
+
+    def test_record_count_comparison(self):
+        # Read data from Oracle into a PySpark DataFrame
+        df = self.spark.read \
+            .format("jdbc") \
+            .option("url", self.oracle_connection_properties["url"]) \
+            .option("dbtable", self.oracle_table) \
+            .option("user", self.oracle_connection_properties["user"]) \
+            .option("password", self.oracle_connection_properties["password"]) \
+            .option("driver", self.oracle_connection_properties["driver"]) \
+            .load()
+
+        # Fetch the count of records from Oracle
+        oracle_count = self._get_record_count_from_oracle()
+
+        # Get the count of records from the PySpark DataFrame
+        spark_count = df.count()
+
+        # Assert that the record counts match
+        self.assertEqual(spark_count, oracle_count, "Record counts do not match")
+
+    def _get_record_count_from_oracle(self):
+        # Function to fetch the count of records from Oracle
+        from sqlalchemy import create_engine
+        import pandas as pd
+
+        # Create a SQLAlchemy engine for Oracle
+        oracle_engine = create_engine(
+            f"oracle+cx_oracle://{self.oracle_connection_properties['user']}:{self.oracle_connection_properties['password']}@{self.oracle_connection_properties['url']}",
+            echo=True
+        )
+
+        # Query to fetch the count of records from Oracle
+        query = f"SELECT COUNT(*) FROM {self.oracle_table}"
+
+        # Execute the query and fetch the result as a Pandas DataFrame
+        result_df = pd.read_sql_query(query, oracle_engine)
+
+        # Extract the count of records
+        record_count_oracle = result_df.iloc[0, 0]
+
+        return record_count_oracle
+
+if __name__ == "__main__":
+    unittest.main()
