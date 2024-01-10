@@ -1,4 +1,3 @@
-
 # Import necessary libraries and modules
 from src.com.bofa.dcm.utilities import sparkDBUtility as sparkUtil, dq4qd_logger, constants
 from src.com.bofa.dcm.utilities import helperUtils as helper
@@ -15,13 +14,13 @@ def fetch_start_end_time(dq_result_df, start_time):
         start_time_out = start_time
         max_created_ts = dq_result_df.agg(F.max("created_ts").alias("end_time"))
         end_time_out = max_created_ts.first()["end_time"]
-		logger.info(f"Start time: {start_time_out}, End time: {end_time_out}")
+        logger.info(f"Start time: {start_time_out}, End time: {end_time_out}")
         return start_time_out, end_time_out
     else:
         min_max_df = dq_result_df.agg(F.min("created_ts").alias("start_time"), F.max("created_ts").alias("end_time")).first()
         start_time_out = min_max_df["start_time"]
         end_time_out = min_max_df["end_time"]
-		logger.info(f"No start time provided.using min-max times. start time: (start_time_out), End time: {end_time_out)")
+        logger.info(f"No start time provided. Using min-max times. Start time: {start_time_out}, End time: {end_time_out}")
         return start_time_out, end_time_out
 
 # Function to compute aggregated scores based on rule execution results
@@ -59,7 +58,7 @@ def get_aggregated_scores(dq_result_df):
 # Main function to harvest data from DQ to DCM
 def harvest_dq4qd(spark, from_time):
     # Load DQ, DCM, and AST hierarchy dataframes
-    dq_result_df = sparkUtil.create_db_dataframe(spark, "dq", "rule result_table")
+    dq_result_df = sparkUtil.create_db_dataframe(spark, "dq", "rule_result_table")
     dq_rule_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "rule_table")
     dq_agg_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "agg_table")
     ast_hierarchy_df = sparkUtil.create_db_dataframe(spark, "dcm", "ast_hierarchy_table")
@@ -75,134 +74,137 @@ def harvest_dq4qd(spark, from_time):
     dq_result_df = get_aggregated_scores(dq_result_df)
     # Count the number of records received from DQ
     num_of_records_fromDQ = dq_result_df.count()
-	
-	logger.info(f"num of records in dq4qd table where created_ts > {start_time} and <= {end_time} are: {num_of_records_fromDQ}")
-	assets_present_in_dom_count = 0
 
-	if num_of_records_fromDQ > 0:
-		# Generate conditions for AST hierarchy
-		database_condition, table_condition, column_condition = helper.get_ast_hierarchy_conditions(ast_hierarchy_df)
-		ast_hierarchy_df = (
-			ast_hierarchy_df.withColumn('database_name', database_condition)
-			.withColumn('table_name', table_condition)
-			.withColumn('column_name', column_condition)
-		)
+    logger.info(f"Num of records in dq4qd table where created_ts > {start_time} and <= {end_time} are: {num_of_records_fromDQ}")
+    assets_present_in_dcm_count = 0
 
-		# Join DQ results with AST hierarchy
-		dq_result_wth_ast_id_df = dq_result_df.join(ast_hierarchy_df,
-													  (F.upper(dq_result_df['database name']) ==
-													   F.upper(ast_hierarchy_df['database name'])) &
-													  (F.upper(dq_result_df['table name']) ==
-													   F.upper(ast_hierarchy_df['table name'])) &
-													  (F.upper(dq_result_df['column_name']) ==
-													   F.upper(ast_hierarchy_df['column name'])),
-													  'inner')
+    if num_of_records_fromDQ > 0:
+        # Generate conditions for AST hierarchy
+        database_condition, table_condition, column_condition = helper.get_ast_hierarchy_conditions(ast_hierarchy_df)
+        ast_hierarchy_df = (
+            ast_hierarchy_df.withColumn('database_name', database_condition)
+            .withColumn('table_name', table_condition)
+            .withColumn('column_name', column_condition)
+        )
 
-		# Count the number of assets present in DCM
-		assets_present_in_dcm_count = dq_result_with_ast_id_df.count()
+        # Join DQ results with AST hierarchy
+        dq_result_wth_ast_id_df = dq_result_df.join(ast_hierarchy_df,
+                                                     (F.upper(dq_result_df['database_name']) ==
+                                                      F.upper(ast_hierarchy_df['database_name'])) &
+                                                     (F.upper(dq_result_df['table_name']) ==
+                                                      F.upper(ast_hierarchy_df['table_name'])) &
+                                                     (F.upper(dq_result_df['column_name']) ==
+                                                      F.upper(ast_hierarchy_df['column_name'])),
+                                                     'inner')
 
-		# Select relevant columns for DQ aggregated scores
-		dq_agg_df = dq_result_with_ast_id_df.select(
-			F.col('AST ID'),
-			F.col('pass_count'),
-			F.col('failed_count'),
-			F.col('not executed count'),
-			F.col('total rules'),
-			F.col('pass_percentage')
-		)
+        # Count the number of assets present in DCM
+        assets_present_in_dcm_count = dq_result_wth_ast_id_df.count()
 
-		# Count the total number of records from DQ aggregated scores
-		total_count_from_dq = dq_agg_df.count()
-		# Count the number of rules to update or insert
-		count_to_update_or_insert = dq_rule_df.count()
+        # Select relevant columns for DQ aggregated scores
+        dq_agg_df = dq_result_wth_ast_id_df.select(
+            F.col('AST_ID'),
+            F.col('pass_count'),
+            F.col('failed_count'),
+            F.col('not_executed_count'),
+            F.col('total_rules'),
+            F.col('pass_percentage')
+        )
 
-		# Load configuration properties for update query
-		update_config = load_properties("dcm")
-		update_query_template = update_config["dq_agg_update_query"]["query"]
+        count_to_update_or_insert = dq_rule_df.count()
 
-		# Create column mapping for update query
-		column_mapping = {key: value for key, value in update_config["dq_agg_update_query"].items() if key != "query"}
-		# Join DQ aggregated scores with existing records in DCM
-		updates_dq_agg_df = dq_agg_df.join(dq_agg_table_df, 'ast_id', 'inner')
-		# Coalesce partitions to improve performance
-		updates_dq_agg_df = updates_dq_agg_df.coalesce(2)
+        updates_dq_agg_df = dq_agg_df.join(dq_agg_table_df, 'ast_id', 'inner')
+        # Coalesce partitions to improve performance
+        updates_dq_agg_df = updates_dq_agg_df.coalesce(2)
 
-		# If there are records to update, execute the update
-		if updates_dq_agg_df.count() > 0:
-			updates_dq_agg_df = updates_dq_agg_df.toDF(*[col.lower() for col in updates_dq_agg_df.columns])
+        # If there are records to update, execute the update
+        if updates_dq_agg_df.count() > 0:
+            updates_dq_agg_df = updates_dq_agg_df.toDF(*[col.lower() for col in updates_dq_agg_df.columns])
+            update_config = load_properties("dcm")
+            update_query_template = update_config["dq_agg_update_query"]["query"]
+            logger.info(f"Executing update query for DQ aggregated scores. Template: {update_query_template}")
 
-			# Execute the update query for DQ aggregated scores
-			updates_dq_agg_df.foreachPartition(
-				lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
-			)
+            # Execute the update query for DQ aggregated scores
+            updates_dq_agg_df.foreachPartition(
+                lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
+            )
 
-		# Identify new records for DQ aggregated scores
-		new_records_dq_agg_df = dq_agg_df.join(updates_dq_agg_df, 'ast_id', 'left anti')
-		# Coalesce partitions for better performance
-		new_records_dq_agg_df = new_records_dq_agg_df.coalesce(2)
+        # Identify new records for DQ aggregated scores
+        new_records_dq_agg_df = dq_agg_df.join(updates_dq_agg_df, 'ast_id', 'left_anti')
+        # Coalesce partitions for better performance
+        # new_records_dq_agg_df = new_records_dq_agg_df.coalesce(2)
 
-		# Generate a unique identifier for new records
-		new_records_dq_agg_df = new_records_dq_agg_df.withColumn('data_qual_id', F.expr('uuid()'))
+        # Generate a unique identifier for new records
+        new_records_dq_agg_df = new_records_dq_agg_df.withColumn('data_qual_id', F.expr('uuid()'))
 
-		# Write new records to the DCM aggregate table
-		sparkUtil.write_dataframe_to_db(new_records_dq_agg_df, "dcm", "agg_table")
+        # Write new records to the DCM aggregate table
+        dq_rule_with_ast_id_df = dq_rule_df.join(
+            ast_hierarchy_df,
+            ((F.upper(dq_rule_df['database_name']) == F.upper(ast_hierarchy_df['database_name'])) &
+             (F.upper(dq_result_df['table_name']) == F.upper(ast_hierarchy_df['table_name'])) &
+             (F.upper(dq_result_df['column_name']) == F.upper(ast_hierarchy_df['column_name']))
+            ),
+            'inner')
 
-		# Join DQ rule dataframe with AST hierarchy dataframe
-		final_dq_rule_df = dq_rule_with_ast_id_df.join(new_records_dq_agg_df, 'ast_id', 'inner').select(
-			F.col('data_qual_id'),
-			F.col('RULE_DEF_ID'),
-			F.col('RULE NAME')
-		).union(updates_dq_rule_df)
+        updates_dq_rule_df = (dq_rule_with_ast_id_df.join(updates_dq_agg_df, 'AST_ID', 'inner').select([F.col('data_qual_id'), F.col('RULE_DEF_ID'), F.col('RULE_NAME')]))
 
-		# Join updates DQ rule dataframe with existing records in DCM
-		updates_dq_rule_df = dq_rule_with_ast_id_df.join(dq_rule_table_df, 'data_qual_id', 'inner')
-		updates_dq_rule_df = updates_dq_rule_df.toDF(*[col.lower() for col in updates_dq_rule_df.columns])
+        # Updated records + new records for data_qual_rules table in DCM
+        final_dq_rule_df = (dq_rule_with_ast_id_df.join(new_records_dq_agg_df, 'ast_id', 'inner')
+                            .select(F.col('data_qual_id'), F.col('RULE_DEF_ID'), F.col('RULE_NAME'))
+                            .union(updates_dq_rule_df))
 
-		# Load configuration properties for delete query
-		update_config = load_properties("dcm")
-		update_query_template = update_config["dq_rule_delete_query"]["query_del"]
+        if updates_dq_rule_df.count() > 0:
+            updates_dq_rule_df = updates_dq_rule_df.toDF(*[col.lower() for col in updates_dq_rule_df.columns])
+            # updates_dq_rule_df.show()
 
-		# Create column mapping for delete query
-		column_mapping = {key: value for key, value in update_config["dq_rule_delete_query"].items() if key != "query_del"}
+            update_config = load_properties("dcm")
+            update_query_template = update_config["dq_rule_delete_query"]["query_del"]
 
-		# If there are records to update, execute the delete query for DQ rules
-		if updates_dq_rule_df.count() > 0:
-			updates_dq_rule_df.foreachPartition(
-				lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
-			)
+            logger.info("====Updated records + new records for data_qual_rules table in DCM, since we are deleting the update records and inserting later====")
 
-		# Identify new records for DQ rules
-		new_records_dq_rule_df = dq_rule_df.join(updates_dq_rule_df, 'data_qual_id', 'left anti')
+            logger.info(f"Performing delete on rule: {update_query_template}")
 
-		# Generate a unique identifier for new records
-		new_records_dq_rule_df = new_records_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
+            column_mapping = {key: value for key, value in update_config["dq_rule_delete_query"].items() if key != "query_del"}
 
-		# Write new records to the DCM rule table
-		sparkUtil.write_dataframe_to_db(new_records_dq_rule_df, "dcm", "rule_table")
+            updates_dq_rule_df.foreachPartition(lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping))
 
-		# Generate a unique identifier for final DQ rule records
-		final_dq_rule_df = final_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
+        new_records_dq_agg_df = new_records_dq_agg_df.select(
+            F.col("data_qual_id").alias("data_c"),
+            F.col("ast_id").alias("ast_id"),
+            F.lit(1111).alias("creat_btch_id"),
+            F.lit("DQ4QD").alias("creat_nm"),
+            F.current_timestamp().alias("creat_ts"),
+            F.lit("").alias("updt_btch_id"),
+            F.lit("").alias("updt_nm"),
+            F.lit("").alias(" -+ s ^ prime prime "),
+            F.col("pass_count").alias("dq_pass_cnt"),
+            F.col("failed_count").alias("dq_fail_cnt"),
+            F.col("not_executed_count").alias("dq_nexd_cnt"),
+            F.col("total_rules").alias("dq_total_cnt"),
+            F.col("pass_percentage").alias("dq_pass_per"))
 
-		# Select relevant columns for final DQ rule records
-		final_dq_rule_df = final_dq_rule_df.select(
-			F.col("data_qual_rule_id"),
-			F.col("data_qual_id"),
-			F.col("rule_def_id"),
-			F.col("rule_name"),
-			F.lit(1111).alias("creat_btch_id"),
-			F.lit("DQ4QD").alias("creat_nm"),
-			F.current_timestamp().alias("creat_ts"),
-			F.lit("").alias("updt_btch_id"),
-			F.lit("").alias("updt_nm"),
-			F.lit("").alias("updt_ts")
-		)
+        sparkUtil.write_dataframe_to_db(new_records_dq_agg_df, "dcm", "agg_table")
 
-		# Show the final DQ rule dataframe
-		final_dq_rule_df.show()
+        final_dq_rule_df = final_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
 
-    # Generate statistics for the job
-    stats = {"receivedFromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
-    json_stats = json.dumps(stats)
+        final_dq_rule_df = final_dq_rule_df.select(
+            F.col("data_qual_rule_id").alias("data_qual_rule_id"),
+            F.col("data_qual_id").alias("data_qual_id"),
+            F.col("rule_def_id").alias("dq_rule_id"),
+            F.col("rule_name").alias("dq_rule_nm"),
+            F.lit(1111).alias("creat_btch_id ( d ^ prime prime "),
+            F.lit("DQ4QD").alias("creat_nm"),
+            F.current_timestamp().alias("creat_ts"),
+            F.lit("").alias("updt_btch_id"),
+            F.lit("").alias("updt_nm"),
+            F.lit("").alias("upd_t_ts"))
 
-    # Return start time, end time, and job statistics in JSON format
+        sparkUtil.write_dataframe_to_db(final_dq_rule_df, "dcm", "rule_table")
+
+        stats = {"received FromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
+        json_stats = json.dumps(stats)
+
+    else:
+        stats = {"receivedFromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
+        json_stats = json.dumps(stats)
+
     return start_time, end_time, json_stats
