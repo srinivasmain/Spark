@@ -1,0 +1,22 @@
+import cx_Oracle
+
+# Replace 'your_username', 'your_password', 'your_host', 'your_port', and 'your_service' with your actual database credentials
+dsn = cx_Oracle.makedsn('your_host', 'your_port', service_name='your_service')
+
+# Connect to the Oracle database
+connection = cx_Oracle.connect(user='your_username', password='your_password', dsn=dsn)
+
+# Create a cursor to execute SQL statements
+cursor = connection.cursor()
+
+# Example query
+query = 'SELECT * FROM your_table'
+cursor.execute(query)
+
+# Fetch and print the results
+for row in cursor.fetchall():
+    print(row)
+
+# Close the cursor and connection
+cursor.close()
+connection.close()
