@@ -1,0 +1,24 @@
+import configparser
+from pyspark import SparkFiles
+
+def load_properties(*filenames):
+    props = {}
+    
+    for filename in filenames:
+        # Use SparkFiles.get to access files distributed with spark-submit
+        full_path = SparkFiles.get(filename + ".properties")
+        config = configparser.ConfigParser()
+        config.read(full_path)
+        
+        for section in config.sections():
+            props[section] = dict(config[section])
+
+        # Print the content of the properties file
+        with open(full_path, 'r') as file:
+            file_content = file.read()
+            print(f"Content of {full_path}:\n{file_content}\n")
+    
+    return props
+
+# Example: Call the function with a properties file named "example"
+load_properties("example")
