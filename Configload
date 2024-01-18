@@ -1,0 +1,16 @@
+import configparser
+from pyspark import SparkFiles
+
+def load_properties(*filenames):
+    props = {}
+    
+    for filename in filenames:
+        # Use SparkFiles.get to access files distributed with spark-submit
+        full_path = SparkFiles.get(filename + ".properties")
+        config = configparser.ConfigParser()
+        config.read(full_path)
+        
+        for section in config.sections():
+            props[section] = dict(config[section])
+    
+    return props
