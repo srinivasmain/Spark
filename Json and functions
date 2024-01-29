@@ -1,0 +1,127 @@
+
+{
+  "job_status_database": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "your_username",
+    "password": "your_password",
+    "database_name": "your_database",
+	"table_name":"",
+	"job_status_query":""
+  },
+  "data_database": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "your_username",
+    "password": "your_password",
+    "database_name": "your_database",
+	"table_name":"",
+	"data_query_for_attachment":""
+  },
+  "email_address_database": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "your_username",
+    "password": "your_password",
+    "database_name": "your_database",
+	"table_name":"",
+	"email_address_query":""
+  },
+  "Email_detail": {
+    "subject": "localhost",
+    "from_address": 5432,
+    "to_address": "your_username",
+    "is_attachment": "your_password",
+    "template_location": "your_database"
+	
+  }
+}
+
+
+import json
+
+def read_config_file(file_path):
+    # Read JSON file
+    with open(file_path, "r") as json_file:
+        config_data = json.load(json_file)
+
+    # Extract job_status_database details
+    job_status_database = {
+        "host": config_data["job_status_database"]["host"],
+        "port": config_data["job_status_database"]["port"],
+        "username": config_data["job_status_database"]["username"],
+        "password": config_data["job_status_database"]["password"],
+        "database_name": config_data["job_status_database"]["database_name"],
+        "table_name": config_data["job_status_database"]["table_name"],
+        "job_status_query": config_data["job_status_database"]["job_status_query"]
+    }
+
+    # Extract data_database details
+    data_database = {
+        "host": config_data["data_database"]["host"],
+        "port": config_data["data_database"]["port"],
+        "username": config_data["data_database"]["username"],
+        "password": config_data["data_database"]["password"],
+        "database_name": config_data["data_database"]["database_name"],
+        "table_name": config_data["data_database"]["table_name"],
+        "data_query_for_attachment": config_data["data_database"]["data_query_for_attachment"]
+    }
+
+    # Extract email_address_database details
+    email_address_database = {
+        "host": config_data["email_address_database"]["host"],
+        "port": config_data["email_address_database"]["port"],
+        "username": config_data["email_address_database"]["username"],
+        "password": config_data["email_address_database"]["password"],
+        "database_name": config_data["email_address_database"]["database_name"],
+        "table_name": config_data["email_address_database"]["table_name"],
+        "email_address_query": config_data["email_address_database"]["email_address_query"]
+    }
+
+    # Extract Email_detail details
+    email_detail = {
+        "subject": config_data["Email_detail"]["subject"],
+        "from_address": config_data["Email_detail"]["from_address"],
+        "to_address": config_data["Email_detail"]["to_address"],
+        "is_attachment": config_data["Email_detail"]["is_attachment"],
+        "template_location": config_data["Email_detail"]["template_location"]
+    }
+
+    # Return individual dictionaries for each type
+    return {
+        "job_status_database": job_status_database,
+        "data_database": data_database,
+        "email_address_database": email_address_database,
+        "Email_detail": email_detail
+    }
+
+# Example usage:
+config_file_path = "your_config_file.json"
+config_details = read_config_file(config_file_path)
+
+# Accessing individual dictionaries
+job_status_config = config_details["job_status_database"]
+data_config = config_details["data_database"]
+email_address_config = config_details["email_address_database"]
+email_detail_config = config_details["Email_detail"]
+
+# Print individual dictionaries
+print("Job Status Database Config:", job_status_config)
+print("Data Database Config:", data_config)
+print("Email Address Database Config:", email_address_config)
+print("Email Detail Config:", email_detail_config)
+
+Please print as it is
+
+ChatGPT
+python
+Copy code
+Job Status Database Config: {'host': 'localhost', 'port': 5432, 'username': 'your_username', 'password': 'your_password', 'database_name': 'your_database', 'table_name': '', 'job_status_query': ''}
+Data Database Config: {'host': 'localhost', 'port': 5432, 'username': 'your_username', 'password': 'your_password', 'database_name': 'your_database', 'table_name': '', 'data_query_for_attachment': ''}
+Email Address Database Config: {'host': 'localhost', 'port': 5432, 'username': 'your_username', 'password': 'your_password', 'database_name': 'your_database', 'table_name': '', 'email_address_query': ''}
+Email Detail Config: {'subject': 'localhost', 'from_address': 5432, 'to_address': 'your_username', 'is_attachment': 'your_password', 'template_location': 'your_database'}
+
+
+
+
+Message ChatGPT…
