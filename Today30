@@ -1,0 +1,38 @@
+import cx_Oracle
+
+# Database connection details
+oracle_username = "your_username"
+oracle_password = "your_password"
+oracle_host = "your_host"
+oracle_port = "your_port"
+oracle_service_name = "your_service_name"
+
+# Construct the Oracle connection string
+oracle_connection_string = f"{oracle_username}/{oracle_password}@{oracle_host}:{oracle_port}/{oracle_service_name}"
+
+# Connect to the Oracle database
+connection = cx_Oracle.connect(oracle_connection_string)
+
+# Create a cursor
+cursor = connection.cursor()
+
+# Execute a query to fetch data from the employee table
+query = "SELECT * FROM employee"
+cursor.execute(query)
+
+# Fetch only the first row from the result set
+first_row = cursor.fetchone()
+
+# Get column names from the cursor's description
+column_names = [column[0] for column in cursor.description]
+
+# Create a dictionary to store values with prefixed variable names
+variable_dict = {f"v_{column}": value for column, value in zip(column_names, first_row)}
+
+# Access data based on prefixed variable names
+for variable_name, variable_value in variable_dict.items():
+    print(f"{variable_name}: {variable_value}")
+
+# Close the cursor and connection
+cursor.close()
+connection.close()
