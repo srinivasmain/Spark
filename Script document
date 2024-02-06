@@ -1,0 +1,65 @@
+Script Documentation
+1. email_notification_wrapper.sh
+Purpose:
+This script serves as a wrapper to orchestrate the process of sending email notifications.
+
+Initialization:
+START_DATETIME and CURR_TIME are set for logging purposes.
+Parameter Validation:
+Validates the input parameters.
+Expects 5 arguments: EMAIL_CONFIG_FILE_PATH, APP_NAME, JOB_STATUS, EMAIL_DATA, and RUN_ID.
+EMAIL_CONFIG_FILE_PATH: Configuration file path containing email settings.
+APP_NAME: Name of the application.
+JOB_STATUS: Status of the job (success/failure).
+EMAIL_DATA: JSON object containing email data.
+RUN_ID: Unique identifier for the run.
+Email Notification Call:
+Calls the email_notification.sh script with relevant arguments.
+Checks the return code to determine the success or failure of the notification.
+2. email_notification.sh
+Purpose:
+This script orchestrates the email notification process. It calls a Python script (notification.py) with necessary arguments to generate and send email notifications.
+
+Key Components:
+Command-Line Arguments:
+Expects six command-line arguments: EMAIL_CONFIG_FILE_PATH, APP_NAME, JOB_STATUS, EMAIL_DATA, RUN_ID, SEND_EMAIL_SCRIPT_PATH.
+Python Script Call:
+Calls notification.py with the necessary arguments.
+Checks the success or failure of the email notification based on the exit code.
+3. notification.py (Python Script)
+Purpose:
+This Python script generates email content based on templates, extracts data from a database, and sends the email using a shell script.
+
+Key Components:
+Functions:
+send_email: Calls a shell script to send an email.
+read_template: Reads a template file using Jinja2.
+create_connection: Creates a database connection.
+get_records_for_attachment and get_job_status_details: Retrieve data from the database.
+create_body and create_attachment: Generate email body and attachment from templates.
+process_email: Processes and sends the email.
+Configuration Reading:
+Reads configuration details from a JSON file.
+Main Script:
+Parses command-line arguments.
+Processes email content and sends the email.
+4. send_email.sh
+Purpose:
+This shell script is called by notification.py to send a formatted email using the /usr/lib/sendmail command.
+
+Key Components:
+Functions:
+send_formatted_mail: Constructs and sends a formatted email.
+Content-Type Headers:
+Specifies headers for multipart/mixed content.
+How to Run:
+email_notification_wrapper.sh:
+bash
+Copy code
+./email_notification_wrapper.sh <EMAIL_CONFIG_FILE_PATH> <APP_NAME> <JOB_STATUS> <EMAIL_DATA> <RUN_ID>
+email_notification.sh:
+Called internally by email_notification_wrapper.sh.
+notification.py:
+Called internally by email_notification.sh.
+send_email.sh:
+Called internally by notification.py
