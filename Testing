@@ -1,0 +1,94 @@
+def test_cluster_join_operation(self):
+    # Write test for cluster join operation
+def test_update_and_insert_dataframes(self):
+	# Write test for update and insert DataFrames
+	
+def test_schema_and_table_ids_lookup(self):
+    # Write test for schema and table IDs lookup
+		
+def test_insert_into_asset_tables(self):
+	# Write test for inserting into asset tables
+	
+def test_union_operation(self):
+	# Write test for union operation
+	
+def test_exception_handling(self):
+	# Write test for exception handling
+	
+def test_performance(self):
+	# Write test for performance with a large dataset
+	
+def create_test_df(self, columns, data):
+	return cls.spark.createDataFrame(data, columns)
+===================================================================	
+	
+def test_cluster_join_operation(self):
+    # Write test for cluster join operation
+
+def test_update_and_insert_dataframes(self):
+	# Write test for update and insert DataFrames
+
+def test_schema_and_table_ids_lookup(self):
+	# Write test for schema and table IDs lookup
+
+def test_insert_into_asset_tables(self):
+	# Write test for inserting into asset tables
+
+def test_cluster_details_dataframe(self):
+	# Write test for creating cluster_details_df
+
+def test_filtering_of_update_cluster_details(self):
+	# Write test for filtering update_cluster_details_df
+
+def test_union_operation(self):
+	# Write test for union operation
+
+def test_exception_handling(self):
+	# Write test for exception handling
+
+def test_performance(self):
+    # Write test for performance with a large dataset
+	
+====================================================
+
+   def test_query_execution(self):
+        update_df = self.create_test_df(["ast_id"], [("id1",), ("id2",)])
+        with patch('your_module.sparkUtil.read_data_using_direct_query') as mock_read_data:
+            mock_read_data.return_value = self.create_test_df(["temp_ast_id", "id_column"], [("id1", 101), ("id2", 102)])
+            result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "else_id_name")
+            mock_read_data.assert_called_once()
+			
+	def test_empty_dataframe(self):
+        update_df = self.create_test_df(["ast_id"], [])
+        result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "else_id_name")
+        # Add assertions based on your expected outcomes
+
+    def test_multiple_rows_in_dataframe(self):
+        update_df = self.create_test_df(["ast_id"], [("id1",), ("id2",), ("id3",)])
+        result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "else_id_name")
+        # Add assertions based on your expected outcomes
+
+    def test_missing_configuration_values(self):
+        update_df = self.create_test_df(["ast_id"], [("id1",), ("id2",)])
+        with patch('your_module.load_properties') as mock_load_properties:
+            mock_load_properties.return_value = {"dcm": {"block_to_read": {}}}
+            result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "else_id_name")
+            # Add assertions based on your expected outcomes
+
+    def test_custom_else_id_name(self):
+        update_df = self.create_test_df(["ast_id"], [("id1",), ("id2",)])
+        result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "custom_id_name")
+        # Add assertions based on your expected outcomes
+
+    def test_non_matching_rows_in_external_data(self):
+        update_df = self.create_test_df(["ast_id"], [("id1",), ("id2",)])
+        with patch('your_module.sparkUtil.read_data_using_direct_query') as mock_read_data:
+            mock_read_data.return_value = self.create_test_df(["temp_ast_id", "id_column"], [("id1", 101)])
+            result_df = get_schema_and_tables_ids(self.spark, update_df, "block_to_read", "query", "else_id_name")
+            # Add assertions based on your expected outcomes
+
+    def test_error_handling(self):
+        # Write test for error handling scenario
+        pass
+
+
