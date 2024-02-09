@@ -1,54 +1,160 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from your_module import cluster_level_exec
+import unittest
+from pyspark.sql import SparkSession
 
-@pytest.fixture
-def mock_spark():
-    return MagicMock()
+class TestSparkSessionCreation(unittest.TestCase):
 
-@pytest.fixture
-def mock_table_details_df():
-    return MagicMock()
+    def test_spark_session_creation(self):
+        # Create a SparkSession
+        spark = sparkUtil.create_spark_session("spark")
 
-@pytest.fixture
-def mock_ast_hierarchy_df():
-    return MagicMock()
+        # Check if SparkSession is not None
+        self.assertIsNotNone(spark, "SparkSession is not created")
 
-@patch('your_module.sparkUtil.create_cols_specific_db_dataframe')
-@patch('your_module.get_updt_insert_df')
-@patch('your_module.get_schema_and_tables_ids')
-@patch('your_module.write_df_in_assets')
-def test_cluster_join_operation(
-    mock_write_df_in_assets,
-    mock_get_schema_and_tables_ids,
-    mock_get_updt_insert_df,
-    mock_create_cols_specific_db_dataframe,
-    mock_spark,
-    mock_table_details_df,
-    mock_ast_hierarchy_df
-):
-    # Mocking necessary dependencies
-    mock_spark_util = mock_create_cols_specific_db_dataframe.return_value
-    mock_spark_util.select.return_value.collect.return_value = [(123,)]  # Mocking db_ast_typ_id value
+        # Check if SparkSession is an instance of SparkSession
+        self.assertIsInstance(spark, SparkSession, "Not an instance of SparkSession")
 
-    mock_get_updt_insert_df.return_value = (MagicMock(), MagicMock())  # Mocking update and insert DataFrames
+        # Check if SparkSession is active
+        self.assertTrue(spark.sparkContext._jsc.sc().isStarted(), "SparkSession is not active")
 
-    mock_new_cluster_df = MagicMock()
-    mock_get_schema_and_tables_ids.return_value.persist.return_value = mock_new_cluster_df
+        # Stop the SparkSession
+        spark.stop()
 
-    # Mocking expected return values
-    expected_cluster_details_df = MagicMock()
-    mock_new_cluster_df.select.return_value.union.return_value = expected_cluster_details_df
+if __name__ == '__main__':
+    unittest.main()
 
-    # Calling the function under test
-    result_cluster_details_df = cluster_level_exec(mock_spark, mock_table_details_df, mock_ast_hierarchy_df)
 
-    # Assertions
-    mock_create_cols_specific_db_dataframe.assert_called_with(mock_spark, "dcm", "db_id_query")
-    mock_get_updt_insert_df.assert_called_with(MagicMock().join(), ... )  # Pass appropriate arguments based on your implementation
-    mock_get_schema_and_tables_ids.assert_called_with(mock_spark, MagicMock(), "ast_typ_ids", "db_id_by_ast_id_query", "db_id")
-    mock_write_df_in_assets.assert_called_with(MagicMock(), "dcm", "asset_table")
-    mock_write_df_in_assets.assert_called_with(MagicMock(), "dcm", "asset_database")
-    assert result_cluster_details_df == expected_cluster_details_df
+ def setUp(self):
+        # Create temporary property files for testing
+        self.temp_files = {}
+        self.temp_files['dcm'] = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_files['dcm'].write(b"[section1]\nkey1=value1\nkey2=value2\n")
+        self.temp_files['dcm'].close()
 
-# You may need to adjust the import paths and patch targets based on your actual module structure.
+    def tearDown(self):
+        # Clean up temporary files
+        for temp_file in self.temp_files.values():
+            os.remove(temp_file.name)
+
+    def test_load_properties(self):
+        # Call the method with the temporary filename
+        result = load_properties("dcm")
+
+        # Check if SparkFiles.get was called with the correct argument
+        expected_full_path = SparkFiles.get("dcm.properties")
+        self.assertEqual(self.temp_files['dcm'].name, expected_full_path)
+
+        # Check if the result is as expected
+        expected_result = {'section1': {'key1': 'value1', 'key2': 'value2'}}
+        self.assertEqual(result, expected_result)
+		
+def test_get_column_details(self):
+        # Sample data for testing
+        sample_data = [
+            (["col1", "col2"], "table1", "db1", "VIRTUAL_VIEW"),
+            (["col3", "col4"], "table2", "db2", "OTHER_TYPE"),
+        ]
+
+        # Create a DataFrame from the sample data
+        columns_schema = ["columns", "tableName", "databaseName", "Table Type"]
+        json_df = self.spark.createDataFrame(sample_data, columns_schema)
+
+        # Call the method with the sample DataFrame
+        result_df = get_column_details(json_df)
+
+        # Define the expected result DataFrame
+        expected_data = [
+            ("col1", "table1", "db1"),
+            ("col2", "table1", "db1"),
+            ("col3", "table2", "db2"),
+            ("col4", "table2", "db2"),
+        ]
+        expected_schema = ["columnName", "tableName", "databaseName"]
+        expected_df = self.spark.createDataFrame(expected_data, expected_schema)
+
+        # Check if the result DataFrame matches the expected DataFrame
+        self.assertTrue(result_df.subtract(expected_df).isEmpty() and expected_df.subtract(result_df).isEmpty())
+
+def test_get_table_details(self):
+        # Sample data for testing
+        sample_data = [
+            (
+                "table1",
+                {
+                    "tableInfo.Database:": "db1",
+                    "tableInfo.cluster_info": "cluster1",
+                    "tableInfo.OwnerType:": "ownerType1",
+                    "tableInfo.Owner:": "owner1",
+                    "tableInfo.CreateTime:": "2022-01-01",
+                    "tableInfo.LastAccessTime:": "2022-01-02",
+                    "tableInfo.Retention:": "30",
+                    "tableInfo.Table Type:": "EXTERNAL",
+                    "tableInfo.Table Parameters:": "param1=value1,param2=value2",
+                    "storageInformation.SerDe Library:": "serdeLib1",
+                    "storageInformation.InputFormat:": "inputFormat1",
+                    "storageInformation.OutputFormat:": "outputFormat1",
+                    "storageInformation.Compressed:": "No",
+                    "storageInformation.Num Buckets:": "10",
+                    "storageInformation.Bucket Columns:": "col1",
+                    "storageInformation.Sort Columns:": "col2",
+                    "viewInformation.View Expanded Text:": "viewDef1",
+                    "storageInformation.location": "/path/to/table1",
+                },
+            ),
+            (
+                "table2",
+                {
+                    "tableInfo.Database:": "db2",
+                    "tableInfo.cluster_info": "cluster2",
+                    "tableInfo.OwnerType:": "ownerType2",
+                    "tableInfo.Owner:": "owner2",
+                    "tableInfo.CreateTime:": "2022-02-01",
+                    "tableInfo.LastAccessTime:": "2022-02-02",
+                    "tableInfo.Retention:": "60",
+                    "tableInfo.Table Type:": "VIRTUAL_VIEW",
+                    "tableInfo.Table Parameters:": "param3=value3,param4=value4",
+                    "storageInformation.SerDe Library:": "serdeLib2",
+                    "storageInformation.InputFormat:": "inputFormat2",
+                    "storageInformation.OutputFormat:": "outputFormat2",
+                    "storageInformation.Compressed:": "Yes",
+                    "storageInformation.Num Buckets:": "20",
+                    "storageInformation.Bucket Columns:": "col3",
+                    "storageInformation.Sort Columns:": "col4",
+                    "viewInformation.View Expanded Text:": "viewDef2",
+                    "storageInformation.location": None,
+                },
+            ),
+        ]
+
+        # Create a DataFrame from the sample data
+        columns_schema = ["tableName", "tableInfo"]
+        json_df = self.spark.createDataFrame(sample_data, columns_schema)
+
+        # Call the method with the sample DataFrame
+        result_df = get_table_details(json_df)
+
+        # Define the expected result DataFrame
+        expected_data = [
+            (
+                "ownerType1", "owner1", "2022-01-01", "2022-01-02", "30", "EXTERNAL",
+                "param1=value1,param2=value2", "table1", "db1", "cluster1", "serdeLib1",
+                "inputFormat1", "outputFormat1", "N", "10", "col1", "col2", "/path/to/table1", "viewDef1", "db1"
+            ),
+            (
+                "ownerType2", "owner2", "2022-02-01", "2022-02-02", "60", "VIRTUAL_VIEW",
+                "param3=value3,param4=value4", "table2", "db2", "cluster2", "serdeLib2",
+                "inputFormat2", "outputFormat2", "Y", "20", "col3", "col4", None, "viewDef2", "db2"
+            ),
+        ]
+        expected_schema = [
+            "OwnerType", "Owner", "CreateTime", "LastAccessTime", "Retention", "TableType",
+            "TableParameters", "tableName", "databaseName", "cluster_info", "SerDeLib",
+            "InputFormat", "OutputFormat", "Compressed", "NumBuckets", "BucketColumns",
+            "SortColumns", "location", "vw_def", "ait_name"
+        ]
+        expected_df = self.spark.createDataFrame(expected_data, expected_schema)
+
+        # Check if the result DataFrame matches the expected DataFrame
+        self.assertTrue(result_df.subtract(expected_df).isEmpty() and expected_df.subtract(result_df).isEmpty())
+
+
+
