@@ -1,48 +1,41 @@
-Certainly! Here's the structured test case for test_get_updt_insert_df:
+test_empty_dataframe_creation:
 
 Description:
-Test the get_updt_insert_df function with sample data.
+Test the creation and properties of an empty DataFrame with a sample schema.
 
 Steps to execute:
 
-Define sample data and schema.
+Define a sample schema for an empty DataFrame.
 
 python
 Copy code
-data = [
-    (1, "Name1", "Type1", 101, "Source1", 201, "Source2", 301, "db1", "table1", "col1"),
-    (2, "Name2", "Type2", 102, "Source3", 202, "Source4", 302, "db2", "table2", "col2"),
-    (3, None, "Type3", 103, "Source5", 203, "Source6", 303, "db3", "table3", "col3"),
-    # Add more sample data as needed
-]
-
-schema = [
-    "AST_ID", "AST_NM", "AST_TYP_CD", "AST_TYP_ID",
-    "SOURCE_NAME_LVL1", "SOURCE_ID_LVL1", "SOURCE_NAME_LVL2", "SOURCE_ID_LVL2",
-    "database_name", "table_name", "column_name"
-]
-Create a DataFrame from the sample data and schema.
+sample_schema = StructType([
+    StructField("databaseName", StringType(), nullable=True),
+    StructField("tableName", StringType(), nullable=True),
+    StructField("columnName", StringType(), nullable=True),
+    StructField("other_column", IntegerType(), nullable=True),
+])
+Create an empty DataFrame with the specified schema.
 
 python
 Copy code
-df = self.spark.createDataFrame(data, schema=schema)
-Call the get_updt_insert_df function.
+empty_df = self.spark.createDataFrame([], schema=sample_schema)
+Show the empty DataFrame.
 
 python
 Copy code
-update_df, insert_df = get_updt_insert_df(df)
-Assert the count of the update and insert DataFrames.
+empty_df.show()
+Add any additional assertions for the empty DataFrame if needed.
 
 python
 Copy code
-self.assertEqual(update_df.count(), expected_update_count)  # Replace with the expected count
-self.assertEqual(insert_df.count(), expected_insert_count)  # Replace with the expected count
+self.assertEqual(empty_df.count(), 0)
 Expected result:
 
-The get_updt_insert_df function should correctly separate update and insert DataFrames.
-The count of the update and insert DataFrames should match the expected counts.
+The empty DataFrame should be created with the specified schema.
+The empty DataFrame should have a count of 0.
 Actual result:
-The test will output messages and assert whether the counts of the update and insert DataFrames match the expected counts, helping verify the correctness of the get_updt_insert_df function.
+The test will output messages, show the empty DataFrame, and assert whether its count matches the expected count, helping verify the correctness of the empty DataFrame creation.
 
 
 
@@ -50,4 +43,4 @@ The test will output messages and assert whether the counts of the update and in
 
 Message ChatGPT…
 
-ChatGPT can make mistakes. Consider
+ChatGPT can make mistakes. Consider checking 
