@@ -1,160 +1,44 @@
 import unittest
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from your_module import get_updt_insert_df  # Make sure to replace 'your_module' with the actual module name
 
-class TestSparkSessionCreation(unittest.TestCase):
+class TestGetUpdtInsertDf(unittest.TestCase):
 
-    def test_spark_session_creation(self):
-        # Create a SparkSession
-        spark = sparkUtil.create_spark_session("spark")
+    def setUp(self):
+        self.spark = SparkSession.builder.master("local[2]").appName("test").getOrCreate()
 
-        # Check if SparkSession is not None
-        self.assertIsNotNone(spark, "SparkSession is not created")
+    def tearDown(self):
+        self.spark.stop()
 
-        # Check if SparkSession is an instance of SparkSession
-        self.assertIsInstance(spark, SparkSession, "Not an instance of SparkSession")
+    def test_get_updt_insert_df(self):
+        # Sample data
+        data = [
+            (1, "Name1", "Type1", 101, "Source1", 201, "Source2", 301, "db1", "table1", "col1"),
+            (2, "Name2", "Type2", 102, "Source3", 202, "Source4", 302, "db2", "table2", "col2"),
+            (3, None, "Type3", 103, "Source5", 203, "Source6", 303, "db3", "table3", "col3"),
+            # Add more sample data as needed
+        ]
 
-        # Check if SparkSession is active
-        self.assertTrue(spark.sparkContext._jsc.sc().isStarted(), "SparkSession is not active")
+        schema = [
+            "AST_ID", "AST_NM", "AST_TYP_CD", "AST_TYP_ID",
+            "SOURCE_NAME_LVL1", "SOURCE_ID_LVL1", "SOURCE_NAME_LVL2", "SOURCE_ID_LVL2",
+            "database_name", "table_name", "column_name"
+        ]
 
-        # Stop the SparkSession
-        spark.stop()
+        # Creating a DataFrame
+        df = self.spark.createDataFrame(data, schema=schema)
+
+        # Calling the function
+        update_df, insert_df = get_updt_insert_df(df)
+
+        # Assertions
+        self.assertEqual(update_df.count(), 2)  # Replace with the expected count
+        self.assertEqual(insert_df.count(), 1)  # Replace with the expected count
+
+        # Additional assertions as needed
+        # ...
+
 
 if __name__ == '__main__':
     unittest.main()
-
-
- def setUp(self):
-        # Create temporary property files for testing
-        self.temp_files = {}
-        self.temp_files['dcm'] = tempfile.NamedTemporaryFile(delete=False)
-        self.temp_files['dcm'].write(b"[section1]\nkey1=value1\nkey2=value2\n")
-        self.temp_files['dcm'].close()
-
-    def tearDown(self):
-        # Clean up temporary files
-        for temp_file in self.temp_files.values():
-            os.remove(temp_file.name)
-
-    def test_load_properties(self):
-        # Call the method with the temporary filename
-        result = load_properties("dcm")
-
-        # Check if SparkFiles.get was called with the correct argument
-        expected_full_path = SparkFiles.get("dcm.properties")
-        self.assertEqual(self.temp_files['dcm'].name, expected_full_path)
-
-        # Check if the result is as expected
-        expected_result = {'section1': {'key1': 'value1', 'key2': 'value2'}}
-        self.assertEqual(result, expected_result)
-		
-def test_get_column_details(self):
-        # Sample data for testing
-        sample_data = [
-            (["col1", "col2"], "table1", "db1", "VIRTUAL_VIEW"),
-            (["col3", "col4"], "table2", "db2", "OTHER_TYPE"),
-        ]
-
-        # Create a DataFrame from the sample data
-        columns_schema = ["columns", "tableName", "databaseName", "Table Type"]
-        json_df = self.spark.createDataFrame(sample_data, columns_schema)
-
-        # Call the method with the sample DataFrame
-        result_df = get_column_details(json_df)
-
-        # Define the expected result DataFrame
-        expected_data = [
-            ("col1", "table1", "db1"),
-            ("col2", "table1", "db1"),
-            ("col3", "table2", "db2"),
-            ("col4", "table2", "db2"),
-        ]
-        expected_schema = ["columnName", "tableName", "databaseName"]
-        expected_df = self.spark.createDataFrame(expected_data, expected_schema)
-
-        # Check if the result DataFrame matches the expected DataFrame
-        self.assertTrue(result_df.subtract(expected_df).isEmpty() and expected_df.subtract(result_df).isEmpty())
-
-def test_get_table_details(self):
-        # Sample data for testing
-        sample_data = [
-            (
-                "table1",
-                {
-                    "tableInfo.Database:": "db1",
-                    "tableInfo.cluster_info": "cluster1",
-                    "tableInfo.OwnerType:": "ownerType1",
-                    "tableInfo.Owner:": "owner1",
-                    "tableInfo.CreateTime:": "2022-01-01",
-                    "tableInfo.LastAccessTime:": "2022-01-02",
-                    "tableInfo.Retention:": "30",
-                    "tableInfo.Table Type:": "EXTERNAL",
-                    "tableInfo.Table Parameters:": "param1=value1,param2=value2",
-                    "storageInformation.SerDe Library:": "serdeLib1",
-                    "storageInformation.InputFormat:": "inputFormat1",
-                    "storageInformation.OutputFormat:": "outputFormat1",
-                    "storageInformation.Compressed:": "No",
-                    "storageInformation.Num Buckets:": "10",
-                    "storageInformation.Bucket Columns:": "col1",
-                    "storageInformation.Sort Columns:": "col2",
-                    "viewInformation.View Expanded Text:": "viewDef1",
-                    "storageInformation.location": "/path/to/table1",
-                },
-            ),
-            (
-                "table2",
-                {
-                    "tableInfo.Database:": "db2",
-                    "tableInfo.cluster_info": "cluster2",
-                    "tableInfo.OwnerType:": "ownerType2",
-                    "tableInfo.Owner:": "owner2",
-                    "tableInfo.CreateTime:": "2022-02-01",
-                    "tableInfo.LastAccessTime:": "2022-02-02",
-                    "tableInfo.Retention:": "60",
-                    "tableInfo.Table Type:": "VIRTUAL_VIEW",
-                    "tableInfo.Table Parameters:": "param3=value3,param4=value4",
-                    "storageInformation.SerDe Library:": "serdeLib2",
-                    "storageInformation.InputFormat:": "inputFormat2",
-                    "storageInformation.OutputFormat:": "outputFormat2",
-                    "storageInformation.Compressed:": "Yes",
-                    "storageInformation.Num Buckets:": "20",
-                    "storageInformation.Bucket Columns:": "col3",
-                    "storageInformation.Sort Columns:": "col4",
-                    "viewInformation.View Expanded Text:": "viewDef2",
-                    "storageInformation.location": None,
-                },
-            ),
-        ]
-
-        # Create a DataFrame from the sample data
-        columns_schema = ["tableName", "tableInfo"]
-        json_df = self.spark.createDataFrame(sample_data, columns_schema)
-
-        # Call the method with the sample DataFrame
-        result_df = get_table_details(json_df)
-
-        # Define the expected result DataFrame
-        expected_data = [
-            (
-                "ownerType1", "owner1", "2022-01-01", "2022-01-02", "30", "EXTERNAL",
-                "param1=value1,param2=value2", "table1", "db1", "cluster1", "serdeLib1",
-                "inputFormat1", "outputFormat1", "N", "10", "col1", "col2", "/path/to/table1", "viewDef1", "db1"
-            ),
-            (
-                "ownerType2", "owner2", "2022-02-01", "2022-02-02", "60", "VIRTUAL_VIEW",
-                "param3=value3,param4=value4", "table2", "db2", "cluster2", "serdeLib2",
-                "inputFormat2", "outputFormat2", "Y", "20", "col3", "col4", None, "viewDef2", "db2"
-            ),
-        ]
-        expected_schema = [
-            "OwnerType", "Owner", "CreateTime", "LastAccessTime", "Retention", "TableType",
-            "TableParameters", "tableName", "databaseName", "cluster_info", "SerDeLib",
-            "InputFormat", "OutputFormat", "Compressed", "NumBuckets", "BucketColumns",
-            "SortColumns", "location", "vw_def", "ait_name"
-        ]
-        expected_df = self.spark.createDataFrame(expected_data, expected_schema)
-
-        # Check if the result DataFrame matches the expected DataFrame
-        self.assertTrue(result_df.subtract(expected_df).isEmpty() and expected_df.subtract(result_df).isEmpty())
-
-
-
