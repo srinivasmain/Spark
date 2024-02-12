@@ -1,62 +1,54 @@
-import unittest
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-from unittest.mock import patch, MagicMock
-from your_module import get_updt_insert_cols_df  # Replace 'your_module' with the actual module name
+Description:
+Test the get_column_details method with sample data.
 
-class TestGetUpdtInsertColsDf(unittest.TestCase):
+Steps to execute:
 
-    def setUp(self):
-        self.spark = SparkSession.builder.master("local[2]").appName("test").getOrCreate()
+Load properties and get the JSON file path.
 
-    def tearDown(self):
-        self.spark.stop()
+python
+Copy code
+result = load_properties("dcm")
+json_filepath = result["read_json"]["json_file_path"]
+Create a Spark session and load the sample JSON data into a DataFrame.
 
-    @patch('your_module.get_updt_insert_df')
-    def test_get_updt_insert_cols_df(self, mock_get_updt_insert_df):
-        # Sample data for col_details_df
-        col_details_data = [
-            ("db1", "table1", "col1", 1),
-            ("db2", "table2", "col2", 2),
-            # Add more sample data as needed
-        ]
+python
+Copy code
+spark = sparkUtil.create_spark_session("spark")
+json_df = sparkUtil.create_json_dataframe(spark, json_filepath)
+Call the get_column_details method with the sample DataFrame.
 
-        col_details_schema = ["databaseName", "tableName", "columnName", "other_column"]
+python
+Copy code
+result_df = get_column_details(json_df)
+result_df.show()
+Load expected data from a CSV file.
 
-        # Creating a DataFrame for col_details_df
-        col_details_df = self.spark.createDataFrame(col_details_data, schema=col_details_schema)
+python
+Copy code
+expected_df = spark.read.csv(r"C:\Users\ZKNZYJ5\Documents\dcm\dcm\tests\Sample_test.csv", header=True, mode="overwrite")
+expected_df.show()
+Compare the first two records of result and expected DataFrames.
 
-        # Sample data for ast_hierarchy_df
-        ast_hierarchy_data = [
-            ("db1", "table1", "col1", "AST1"),
-            ("db2", "table2", "col2", "AST2"),
-            # Add more sample data as needed
-        ]
+python
+Copy code
+res_first_rec = result_df.head(2)
+exp_first_rec = expected_df.head(2)
+print("=====res_first_rec===", res_first_rec)
+print("=====exp_first_rec===", exp_first_rec)
+Assert that the first record of the "columnName" column in both DataFrames is equal.
 
-        ast_hierarchy_schema = ["database_name", "table_name", "column_name", "AST_ID"]
+python
+Copy code
+self.assertEqual(result_df.select("columnName").first(), expected_df.select("columnName").first())
+Expected result:
 
-        # Creating a DataFrame for ast_hierarchy_df
-        ast_hierarchy_df = self.spark.createDataFrame(ast_hierarchy_data, schema=ast_hierarchy_schema)
-
-        # Mocking the return value of get_updt_insert_df
-        mock_get_updt_insert_df.return_value = (self.spark.createDataFrame([], schema=col_details_schema),
-                                                self.spark.createDataFrame([], schema=col_details_schema))
-
-        # Calling the function
-        update_cols_df, insert_cols_df = get_updt_insert_cols_df(col_details_df, ast_hierarchy_df)
-
-        # Assertions
-        mock_get_updt_insert_df.assert_called_once_with(
-            col_details_df.join(ast_hierarchy_df,
-                                (F.upper(col_details_df['databaseName']) == F.upper(ast_hierarchy_df['database_name'])) &
-                                (F.upper(col_details_df['tableName']) == F.upper(ast_hierarchy_df['table_name'])) &
-                                (F.upper(col_details_df['columnName']) == F.upper(ast_hierarchy_df['column_name'])),
-                                'left')
-        )
-
-        # Additional assertions as needed
-        # ...
+The get_column_details method should process the sample DataFrame correctly.
+The result DataFrame and the expected DataFrame should match for the "columnName" column.
+Actual result:
+The test will output messages and show the result and expected DataFrames to help verify the correctness of the get_column_details method.
 
 
-if __name__ == '__main__':
-    unittest.main()
+
+
+
+Message ChatGPT…
