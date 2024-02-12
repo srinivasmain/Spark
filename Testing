@@ -1,7 +1,7 @@
-test_get_table_detail_data_test:
+Certainly! Here's the structured test case for test_get_table_detail_schema_test:
 
 Description:
-Test the get_table_details method with sample data.
+Test the get_table_details method with sample data to verify the schema.
 
 Steps to execute:
 
@@ -9,7 +9,7 @@ Load properties and get the JSON file path.
 
 python
 Copy code
-result = load_properties("dcm")
+result = load_properties("dom")
 json_filepath = result["read_json"]["json_file_path"]
 Create a Spark session and load the sample JSON data into a DataFrame.
 
@@ -22,29 +22,32 @@ Call the get_table_details method with the sample DataFrame.
 python
 Copy code
 result_df = get_table_details(json_df)
-result_df.show()
 result_df.printSchema()
-Create a DataFrame from the provided sample data.
+result_df.show()
+Get the columns of the result DataFrame and load expected data from a JSON file.
 
 python
 Copy code
-sample_data = [("USER", "zscrhl1d", "VIRTUAL_VIEW", "pty_rb_wk", "crh_1h_crhsmn_sec")]
-columns_schema = ["OwnerType", "Owner", "TableType", "tableName", "databaseName"]
-expected_df = spark.createDataFrame(sample_data, columns_schema)
-Assert that the first record of the result DataFrame matches the first record of the expected DataFrame.
+res_df_cols = result_df.columns
+expected_df = spark.read.option("multiline", "true").json("C:\\Users\\ZKNZYJ5\\Documents\\dcm\\dcm\\tests\\sample_json_test.json")
+exp_df_cols = expected_df.columns
+Assert that the sorted columns of the result DataFrame match the sorted columns of the expected DataFrame.
 
 python
 Copy code
-self.assertEqual(
-    result_df.select("OwnerType", "Owner", "TableType", "tableName", "databaseName").first(),
-    expected_df.select("OwnerType", "Owner", "TableType", "tableName", "databaseName").first()
-)
+self.assertEqual(sorted(res_df_cols), sorted(exp_df_cols))
+Display the schema and content of the expected DataFrame.
+
+python
+Copy code
+expected_df.printSchema()
+expected_df.show()
 Expected result:
 
 The get_table_details method should process the sample DataFrame correctly.
 The schema and content of the result DataFrame should match the expected DataFrame.
 Actual result:
-The test will output messages, show the schema and content of the result DataFrame, and assert whether the first record matches the expected DataFrame, helping verify the correctness of the get_table_details method.
+The test will output messages, show the schema and content of both DataFrames, and assert whether their columns match, helping verify the correctness of the get_table_details method.
 
 
 
@@ -52,4 +55,4 @@ The test will output messages, show the schema and content of the result DataFra
 
 Message ChatGPT…
 
-ChatGPT can make mistakes. Consider checking important information.
+ChatGPT can make mistakes. Consider checking important information
