@@ -1,44 +1,28 @@
 import unittest
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-from your_module import get_updt_insert_df  # Make sure to replace 'your_module' with the actual module name
+from unittest.mock import patch, MagicMock
+from your_module import write_df_in_assets  # Replace 'your_module' with the actual module name
 
-class TestGetUpdtInsertDf(unittest.TestCase):
+class TestWriteDFInAssets(unittest.TestCase):
 
-    def setUp(self):
-        self.spark = SparkSession.builder.master("local[2]").appName("test").getOrCreate()
-
-    def tearDown(self):
-        self.spark.stop()
-
-    def test_get_updt_insert_df(self):
+    @patch('builtins.print')
+    @patch('your_module.sparkUtil.write_dataframe_to_db')
+    def test_write_df_in_assets(self, mock_write_dataframe, mock_print):
         # Sample data
-        data = [
-            (1, "Name1", "Type1", 101, "Source1", 201, "Source2", 301, "db1", "table1", "col1"),
-            (2, "Name2", "Type2", 102, "Source3", 202, "Source4", 302, "db2", "table2", "col2"),
-            (3, None, "Type3", 103, "Source5", 203, "Source6", 303, "db3", "table3", "col3"),
-            # Add more sample data as needed
-        ]
+        data = [(1, "Name1", "Type1"), (2, "Name2", "Type2")]
 
-        schema = [
-            "AST_ID", "AST_NM", "AST_TYP_CD", "AST_TYP_ID",
-            "SOURCE_NAME_LVL1", "SOURCE_ID_LVL1", "SOURCE_NAME_LVL2", "SOURCE_ID_LVL2",
-            "database_name", "table_name", "column_name"
-        ]
+        schema = ["ID", "Name", "Type"]
 
         # Creating a DataFrame
         df = self.spark.createDataFrame(data, schema=schema)
 
         # Calling the function
-        update_df, insert_df = get_updt_insert_df(df)
+        write_df_in_assets(df, 'your_properties_file_name', 'your_table_name')
 
         # Assertions
-        self.assertEqual(update_df.count(), 2)  # Replace with the expected count
-        self.assertEqual(insert_df.count(), 1)  # Replace with the expected count
+        mock_print.assert_called_with("=======going to insert data in your_table_name========")
 
         # Additional assertions as needed
-        # ...
-
+        mock_write_dataframe.assert_not_called()  # Since the actual writing is commented out
 
 if __name__ == '__main__':
     unittest.main()
