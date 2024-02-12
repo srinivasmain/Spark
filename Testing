@@ -1,53 +1,48 @@
-Certainly! Here's the structured test case for test_get_table_detail_schema_test:
+Certainly! Here's the structured test case for test_get_updt_insert_df:
 
 Description:
-Test the get_table_details method with sample data to verify the schema.
+Test the get_updt_insert_df function with sample data.
 
 Steps to execute:
 
-Load properties and get the JSON file path.
+Define sample data and schema.
 
 python
 Copy code
-result = load_properties("dom")
-json_filepath = result["read_json"]["json_file_path"]
-Create a Spark session and load the sample JSON data into a DataFrame.
+data = [
+    (1, "Name1", "Type1", 101, "Source1", 201, "Source2", 301, "db1", "table1", "col1"),
+    (2, "Name2", "Type2", 102, "Source3", 202, "Source4", 302, "db2", "table2", "col2"),
+    (3, None, "Type3", 103, "Source5", 203, "Source6", 303, "db3", "table3", "col3"),
+    # Add more sample data as needed
+]
+
+schema = [
+    "AST_ID", "AST_NM", "AST_TYP_CD", "AST_TYP_ID",
+    "SOURCE_NAME_LVL1", "SOURCE_ID_LVL1", "SOURCE_NAME_LVL2", "SOURCE_ID_LVL2",
+    "database_name", "table_name", "column_name"
+]
+Create a DataFrame from the sample data and schema.
 
 python
 Copy code
-spark = sparkUtil.create_spark_session("spark")
-json_df = sparkUtil.create_json_dataframe(spark, json_filepath)
-Call the get_table_details method with the sample DataFrame.
+df = self.spark.createDataFrame(data, schema=schema)
+Call the get_updt_insert_df function.
 
 python
 Copy code
-result_df = get_table_details(json_df)
-result_df.printSchema()
-result_df.show()
-Get the columns of the result DataFrame and load expected data from a JSON file.
+update_df, insert_df = get_updt_insert_df(df)
+Assert the count of the update and insert DataFrames.
 
 python
 Copy code
-res_df_cols = result_df.columns
-expected_df = spark.read.option("multiline", "true").json("C:\\Users\\ZKNZYJ5\\Documents\\dcm\\dcm\\tests\\sample_json_test.json")
-exp_df_cols = expected_df.columns
-Assert that the sorted columns of the result DataFrame match the sorted columns of the expected DataFrame.
-
-python
-Copy code
-self.assertEqual(sorted(res_df_cols), sorted(exp_df_cols))
-Display the schema and content of the expected DataFrame.
-
-python
-Copy code
-expected_df.printSchema()
-expected_df.show()
+self.assertEqual(update_df.count(), expected_update_count)  # Replace with the expected count
+self.assertEqual(insert_df.count(), expected_insert_count)  # Replace with the expected count
 Expected result:
 
-The get_table_details method should process the sample DataFrame correctly.
-The schema and content of the result DataFrame should match the expected DataFrame.
+The get_updt_insert_df function should correctly separate update and insert DataFrames.
+The count of the update and insert DataFrames should match the expected counts.
 Actual result:
-The test will output messages, show the schema and content of both DataFrames, and assert whether their columns match, helping verify the correctness of the get_table_details method.
+The test will output messages and assert whether the counts of the update and insert DataFrames match the expected counts, helping verify the correctness of the get_updt_insert_df function.
 
 
 
@@ -55,4 +50,4 @@ The test will output messages, show the schema and content of both DataFrames, a
 
 Message ChatGPT…
 
-ChatGPT can make mistakes. Consider checking important information
+ChatGPT can make mistakes. Consider
