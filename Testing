@@ -57,7 +57,3 @@ class TestGetUpdtInsertColsDf(unittest.TestCase):
 
         # Additional assertions as needed
         # ...
-
-
-if __name__ == '__main__':
-    unittest.main()
