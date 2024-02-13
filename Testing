@@ -1,16 +1,316 @@
-CREATE TABLE sample_table (
-    id NUMBER,
-    name VARCHAR2(50),
-    age NUMBER,
-    email VARCHAR2(100),
-    registration_date DATE
-);
+
+from pyspark.sql import SparkSession
+import cx_Oracle
+
+# Step 1: Connect to Oracle and Hive databases
+oracle_url = "jdbc:oracle:thin:@//your_oracle_host:1521/your_oracle_sid"
+hive_url = "jdbc:hive2://your_hive_host:10000/your_hive_db"
+
+oracle_properties = {
+    "user": "your_oracle_user",
+    "password": "your_oracle_password",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+hive_properties = {
+    "user": "your_hive_user",
+    "password": "your_hive_password",
+    "driver": "org.apache.hive.jdbc.HiveDriver"
+}
+
+# Create Spark session
+spark = SparkSession.builder.appName("SchemaComparison").getOrCreate()
+
+# Step 2: Retrieve the table schema from Oracle and Hive
+oracle_table_name = "your_oracle_table"
+hive_table_name = "your_hive_table"
+
+oracle_df = spark.read.jdbc(url=oracle_url, table=oracle_table_name, properties=oracle_properties)
+hive_df = spark.read.jdbc(url=hive_url, table=hive_table_name, properties=hive_properties)
+
+# Step 3: Compare schemas and identify extra columns in Oracle
+oracle_columns = set(oracle_df.columns)
+hive_columns = set(hive_df.columns)
+
+extra_columns_in_oracle = list(oracle_columns - hive_columns)
+
+# Step 4: Generate ALTER TABLE statement for soft delete
+if extra_columns_in_oracle:
+    alter_table_statement = f"ALTER TABLE {oracle_table_name} DROP COLUMN {', '.join(extra_columns_in_oracle)}"
+    
+    # Step 5: Execute ALTER TABLE statement using cx_Oracle
+    oracle_connection = cx_Oracle.connect(user="your_oracle_user", password="your_oracle_password", dsn="your_oracle_dsn")
+    oracle_cursor = oracle_connection.cursor()
+    
+    try:
+        oracle_cursor.execute(alter_table_statement)
+        oracle_connection.commit()
+        print(f"Soft deleted columns in Oracle: {', '.join(extra_columns_in_oracle)}")
+    except Exception as e:
+        print(f"Error executing ALTER TABLE statement: {str(e)}")
+        oracle_connection.rollback()
+    finally:
+        oracle_cursor.close()
+        oracle_connection.close()
+else:
+    print("No columns to soft delete in Oracle.")
+
+# Stop the Spark session
+spark.stop()
 
 
-CREATE TABLE sample_table (
-    id INT,
-    name STRING,
-    age INT,
-    email STRING,
-    registration_date DATE
-);
+
+
+
+
+
+
+from pyspark.sql import SparkSession
+import cx_Oracle
+
+def compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties, oracle_table_name, hive_table_name):
+    # Create Spark session
+    spark = SparkSession.builder.appName("SchemaComparison").getOrCreate()
+
+    try:
+        # Step 2: Retrieve the table schema from Oracle and Hive
+        oracle_df = spark.read.jdbc(url=oracle_url, table=oracle_table_name, properties=oracle_properties)
+        hive_df = spark.read.jdbc(url=hive_url, table=hive_table_name, properties=hive_properties)
+
+        # Step 3: Compare schemas and identify extra columns in Oracle
+        oracle_columns = set(oracle_df.columns)
+        hive_columns = set(hive_df.columns)
+
+        extra_columns_in_oracle = list(oracle_columns - hive_columns)
+
+        # Step 4: Generate ALTER TABLE statement for soft delete
+        if extra_columns_in_oracle:
+            alter_table_statement = f"ALTER TABLE {oracle_table_name} DROP COLUMN {', '.join(extra_columns_in_oracle)}"
+
+            # Step 5: Execute ALTER TABLE statement using cx_Oracle
+            oracle_connection = cx_Oracle.connect(**oracle_properties)
+            oracle_cursor = oracle_connection.cursor()
+
+            try:
+                oracle_cursor.execute(alter_table_statement)
+                oracle_connection.commit()
+                print(f"Soft deleted columns in Oracle: {', '.join(extra_columns_in_oracle)}")
+            except Exception as e:
+                print(f"Error executing ALTER TABLE statement: {str(e)}")
+                oracle_connection.rollback()
+            finally:
+                oracle_cursor.close()
+                oracle_connection.close()
+        else:
+            print("No columns to soft delete in Oracle.")
+    finally:
+        # Stop the Spark session
+        spark.stop()
+
+# Example usage
+oracle_url = "jdbc:oracle:thin:@//your_oracle_host:1521/your_oracle_sid"
+oracle_properties = {
+    "user": "your_oracle_user",
+    "password": "your_oracle_password",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+hive_url = "jdbc:hive2://your_hive_host:10000/your_hive_db"
+hive_properties = {
+    "user": "your_hive_user",
+    "password": "your_hive_password",
+    "driver": "org.apache.hive.jdbc.HiveDriver"
+}
+
+oracle_table_name = "your_oracle_table"
+hive_table_name = "your_hive_table"
+
+compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties, oracle_table_name, hive_table_name)
+
+
+
+
+
+--all databases--
+from pyspark.sql import SparkSession
+import cx_Oracle
+
+def compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties):
+    # Create Spark session
+    spark = SparkSession.builder.appName("SchemaComparison").getOrCreate()
+
+    try:
+        # Get the list of tables from Oracle and Hive
+        oracle_tables = spark.read.jdbc(url=oracle_url, table="(SELECT table_name FROM all_tables WHERE owner = 'your_oracle_user')", properties=oracle_properties)
+        hive_tables = spark.read.jdbc(url=hive_url, table="your_hive_db.INFORMATION_SCHEMA.TABLES", properties=hive_properties)
+
+        # Convert the DataFrames to lists
+        oracle_table_list = oracle_tables.select("TABLE_NAME").rdd.flatMap(lambda x: x).collect()
+        hive_table_list = hive_tables.select("TABLE_NAME").rdd.flatMap(lambda x: x).collect()
+
+        # Iterate over each table
+        for oracle_table_name in oracle_table_list:
+            # Skip tables that are not present in Hive
+            if oracle_table_name not in hive_table_list:
+                print(f"Table '{oracle_table_name}' not found in Hive. Skipping.")
+                continue
+
+            # Retrieve the table schema from Oracle and Hive
+            oracle_df = spark.read.jdbc(url=oracle_url, table=oracle_table_name, properties=oracle_properties)
+            hive_df = spark.read.jdbc(url=hive_url, table=f"{hive_properties['user']}.{oracle_table_name}", properties=hive_properties)
+
+            # Compare schemas and identify extra columns in Oracle
+            oracle_columns = set(oracle_df.columns)
+            hive_columns = set(hive_df.columns)
+
+            extra_columns_in_oracle = list(oracle_columns - hive_columns)
+
+            # Generate ALTER TABLE statement for soft delete
+            if extra_columns_in_oracle:
+                alter_table_statement = f"ALTER TABLE {oracle_table_name} DROP COLUMN {', '.join(extra_columns_in_oracle)}"
+
+                # Execute ALTER TABLE statement using cx_Oracle
+                oracle_connection = cx_Oracle.connect(**oracle_properties)
+                oracle_cursor = oracle_connection.cursor()
+
+                try:
+                    oracle_cursor.execute(alter_table_statement)
+                    oracle_connection.commit()
+                    print(f"Soft deleted columns in Oracle table '{oracle_table_name}': {', '.join(extra_columns_in_oracle)}")
+                except Exception as e:
+                    print(f"Error executing ALTER TABLE statement: {str(e)}")
+                    oracle_connection.rollback()
+                finally:
+                    oracle_cursor.close()
+                    oracle_connection.close()
+            else:
+                print(f"No columns to soft delete in Oracle table '{oracle_table_name}'.")
+    finally:
+        # Stop the Spark session
+        spark.stop()
+
+# Example usage
+oracle_url = "jdbc:oracle:thin:@//your_oracle_host:1521/your_oracle_sid"
+oracle_properties = {
+    "user": "your_oracle_user",
+    "password": "your_oracle_password",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+hive_url = "jdbc:hive2://your_hive_host:10000/your_hive_db"
+hive_properties = {
+    "user": "your_hive_user",
+    "password": "your_hive_password",
+    "driver": "org.apache.hive.jdbc.HiveDriver"
+}
+
+compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties)
+
+
+from pyspark.sql import SparkSession
+import cx_Oracle
+
+def compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties):
+    # Create Spark session
+    spark = SparkSession.builder.appName("SchemaComparison").getOrCreate()
+
+    try:
+        # Get the list of tables from Oracle and Hive
+        oracle_tables = spark.read.jdbc(url=oracle_url, table="(SELECT table_name FROM all_tables WHERE owner = 'your_oracle_user')", properties=oracle_properties)
+        hive_tables = spark.read.jdbc(url=hive_url, table="your_hive_db.INFORMATION_SCHEMA.TABLES", properties=hive_properties)
+
+        # Convert the DataFrames to lists
+        oracle_table_list = oracle_tables.select("TABLE_NAME").rdd.flatMap(lambda x: x).collect()
+        hive_table_list = hive_tables.select("TABLE_NAME").rdd.flatMap(lambda x: x).collect()
+
+        # Find the intersection of tables between Oracle and Hive
+        matched_tables = set(oracle_table_list) & set(hive_table_list)
+
+        # Iterate over each matched table
+        for oracle_table_name in matched_tables:
+            # Retrieve the table schema from Oracle and Hive
+            oracle_df = spark.read.jdbc(url=oracle_url, table=oracle_table_name, properties=oracle_properties)
+            hive_df = spark.read.jdbc(url=hive_url, table=f"{hive_properties['user']}.{oracle_table_name}", properties=hive_properties)
+
+            # Compare schemas and identify extra columns in Oracle
+            oracle_columns = set(oracle_df.columns)
+            hive_columns = set(hive_df.columns)
+
+            extra_columns_in_oracle = list(oracle_columns - hive_columns)
+
+            # Generate ALTER TABLE statement for soft delete
+            if extra_columns_in_oracle:
+                alter_table_statement = f"ALTER TABLE {oracle_table_name} DROP COLUMN {', '.join(extra_columns_in_oracle)}"
+
+                # Execute ALTER TABLE statement using cx_Oracle
+                oracle_connection = cx_Oracle.connect(**oracle_properties)
+                oracle_cursor = oracle_connection.cursor()
+
+                try:
+                    oracle_cursor.execute(alter_table_statement)
+                    oracle_connection.commit()
+                    print(f"Soft deleted columns in Oracle table '{oracle_table_name}': {', '.join(extra_columns_in_oracle)}")
+                except Exception as e:
+                    print(f"Error executing ALTER TABLE statement: {str(e)}")
+                    oracle_connection.rollback()
+                finally:
+                    oracle_cursor.close()
+                    oracle_connection.close()
+            else:
+                print(f"No columns to soft delete in Oracle table '{oracle_table_name}'.")
+    finally:
+        # Stop the Spark session
+        spark.stop()
+
+# Example usage
+oracle_url = "jdbc:oracle:thin:@//your_oracle_host:1521/your_oracle_sid"
+oracle_properties = {
+    "user": "your_oracle_user",
+    "password": "your_oracle_password",
+    "driver": "oracle.jdbc.driver.OracleDriver"
+}
+
+hive_url = "jdbc:hive2://your_hive_host:10000/your_hive_db"
+hive_properties = {
+    "user": "your_hive_user",
+    "password": "your_hive_password",
+    "driver": "org.apache.hive.jdbc.HiveDriver"
+}
+
+compare_and_soft_delete_oracle_columns(oracle_url, oracle_properties, hive_url, hive_properties)
+
+ChatGPT
+It looks like you've provided multiple code snippets related to comparing and soft deleting columns in Oracle tables based on Hive table schemas using PySpark and cx_Oracle. Here's a brief overview of the code:
+
+First Code Snippet:
+Imports necessary libraries (pyspark.sql, cx_Oracle).
+Connects to Oracle and Hive databases.
+Retrieves table schemas from Oracle and Hive.
+Compares schemas and identifies extra columns in Oracle.
+Generates an ALTER TABLE statement for soft delete.
+Executes the ALTER TABLE statement using cx_Oracle.
+Second Code Snippet:
+Wraps the logic into a function compare_and_soft_delete_oracle_columns.
+Example usage is provided with specific details.
+Third Code Snippet:
+Extends the functionality to compare and soft delete columns in multiple tables.
+Retrieves the list of tables from both Oracle and Hive databases.
+Iterates over each table, retrieves schemas, and performs soft delete if necessary.
+Fourth Code Snippet:
+Refines the code to handle tables present in both Oracle and Hive.
+Uses the intersection of tables between Oracle and Hive for processing.
+Fifth Code Snippet:
+Further refines the code for efficiency.
+Uses a set of matched tables instead of lists.
+Iterates over matched tables, retrieves schemas, and soft deletes if necessary.
+Example Usage:
+The example usage includes setting up URLs, properties, and table names for Oracle and Hive, then calling the compare_and_soft_delete_oracle_columns function.
+It seems like a comprehensive solution for comparing and soft deleting columns in Oracle tables based on Hive schemas. Depending on your specific use case and requirements, you can choose the snippet that best fits your needs.
+
+
+
+
+
+Message ChatGPT…
+
+ChatGPT can make mistakes. Consider checking important information.
