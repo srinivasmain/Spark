@@ -1,70 +1,16 @@
-ChatGPT 3.5
+CREATE TABLE sample_table (
+    id NUMBER,
+    name VARCHAR2(50),
+    age NUMBER,
+    email VARCHAR2(100),
+    registration_date DATE
+);
 
-User
-from pyspark.sql import SparkSession
 
-# Initialize Spark session
-spark = SparkSession.builder.appName("SchemaTableColumnComparison").enableHiveSupport().getOrCreate()
-
-# Define Hive and Oracle connection properties
-hive_connection_properties = {
-    "url": "jdbc:hive2://<hive_server>:<hive_port>/<hive_database>",
-    "driver": "org.apache.hive.jdbc.HiveDriver",
-    "user": "<hive_username>",
-    "password": "<hive_password>"
-}
-
-oracle_connection_properties = {
-    "url": "jdbc:oracle:thin:@<oracle_host>:<oracle_port>/<oracle_service>",
-    "driver": "oracle.jdbc.driver.OracleDriver",
-    "user": "<oracle_username>",
-    "password": "<oracle_password>"
-}
-
-# Function to compare schemas, tables, and columns and perform soft delete
-def compare_and_soft_delete():
-    # Connect to Hive and Oracle
-    hive_schemas = spark.read.jdbc(**hive_connection_properties, table="SCHEMAS")
-    oracle_schemas = spark.read.jdbc(**oracle_connection_properties, table="SCHEMAS")
-
-    # Compare schemas
-    matched_schemas = hive_schemas.join(oracle_schemas, hive_schemas["schema_name"] == oracle_schemas["schema_name"], "inner")
-    matched_schemas.show()
-
-    # Iterate over matched schemas and compare tables
-    for schema_row in matched_schemas.collect():
-        schema_name = schema_row["schema_name"]
-
-        hive_tables = spark.read.jdbc(**hive_connection_properties, table=f"{schema_name}.TABLES")
-        oracle_tables = spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.TABLES")
-
-        # Compare tables within matched schemas
-        matched_tables = hive_tables.join(oracle_tables, hive_tables["table_name"] == oracle_tables["table_name"], "inner")
-        matched_tables.show()
-
-        # Iterate over matched tables and compare columns
-        for table_row in matched_tables.collect():
-            table_name = table_row["table_name"]
-
-            hive_columns = spark.read.jdbc(**hive_connection_properties, table=f"{schema_name}.{table_name}.COLUMNS")
-            oracle_columns = spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.{table_name}.COLUMNS")
-
-            # Find extra columns in Oracle table
-            extra_columns = set(oracle_columns.select("column_name").rdd.flatMap(lambda x: x).collect()) - set(hive_columns.select("column_name").rdd.flatMap(lambda x: x).collect())
-
-            # Soft delete extra columns in Oracle table
-            if extra_columns:
-                for column in extra_columns:
-                    # Perform soft delete by updating the column value to NULL or a specific flag
-                    spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.{table_name}", column=column).write.jdbc(
-                        mode="overwrite",
-                        properties=oracle_connection_properties,
-                        url=oracle_connection_properties["url"],
-                        table=f"{schema_name}.{table_name}",
-                    )
-
-# Execute the comparison and soft delete
-compare_and_soft_delete()
-
-# Stop the Spark session
-spark.stop()
+CREATE TABLE sample_table (
+    id INT,
+    name STRING,
+    age INT,
+    email STRING,
+    registration_date DATE
+);
