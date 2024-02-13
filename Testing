@@ -1,46 +1,70 @@
-test_empty_dataframe_creation:
+ChatGPT 3.5
 
-Description:
-Test the creation and properties of an empty DataFrame with a sample schema.
+User
+from pyspark.sql import SparkSession
 
-Steps to execute:
+# Initialize Spark session
+spark = SparkSession.builder.appName("SchemaTableColumnComparison").enableHiveSupport().getOrCreate()
 
-Define a sample schema for an empty DataFrame.
+# Define Hive and Oracle connection properties
+hive_connection_properties = {
+    "url": "jdbc:hive2://<hive_server>:<hive_port>/<hive_database>",
+    "driver": "org.apache.hive.jdbc.HiveDriver",
+    "user": "<hive_username>",
+    "password": "<hive_password>"
+}
 
-python
-Copy code
-sample_schema = StructType([
-    StructField("databaseName", StringType(), nullable=True),
-    StructField("tableName", StringType(), nullable=True),
-    StructField("columnName", StringType(), nullable=True),
-    StructField("other_column", IntegerType(), nullable=True),
-])
-Create an empty DataFrame with the specified schema.
+oracle_connection_properties = {
+    "url": "jdbc:oracle:thin:@<oracle_host>:<oracle_port>/<oracle_service>",
+    "driver": "oracle.jdbc.driver.OracleDriver",
+    "user": "<oracle_username>",
+    "password": "<oracle_password>"
+}
 
-python
-Copy code
-empty_df = self.spark.createDataFrame([], schema=sample_schema)
-Show the empty DataFrame.
+# Function to compare schemas, tables, and columns and perform soft delete
+def compare_and_soft_delete():
+    # Connect to Hive and Oracle
+    hive_schemas = spark.read.jdbc(**hive_connection_properties, table="SCHEMAS")
+    oracle_schemas = spark.read.jdbc(**oracle_connection_properties, table="SCHEMAS")
 
-python
-Copy code
-empty_df.show()
-Add any additional assertions for the empty DataFrame if needed.
+    # Compare schemas
+    matched_schemas = hive_schemas.join(oracle_schemas, hive_schemas["schema_name"] == oracle_schemas["schema_name"], "inner")
+    matched_schemas.show()
 
-python
-Copy code
-self.assertEqual(empty_df.count(), 0)
-Expected result:
+    # Iterate over matched schemas and compare tables
+    for schema_row in matched_schemas.collect():
+        schema_name = schema_row["schema_name"]
 
-The empty DataFrame should be created with the specified schema.
-The empty DataFrame should have a count of 0.
-Actual result:
-The test will output messages, show the empty DataFrame, and assert whether its count matches the expected count, helping verify the correctness of the empty DataFrame creation.
+        hive_tables = spark.read.jdbc(**hive_connection_properties, table=f"{schema_name}.TABLES")
+        oracle_tables = spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.TABLES")
 
+        # Compare tables within matched schemas
+        matched_tables = hive_tables.join(oracle_tables, hive_tables["table_name"] == oracle_tables["table_name"], "inner")
+        matched_tables.show()
 
+        # Iterate over matched tables and compare columns
+        for table_row in matched_tables.collect():
+            table_name = table_row["table_name"]
 
+            hive_columns = spark.read.jdbc(**hive_connection_properties, table=f"{schema_name}.{table_name}.COLUMNS")
+            oracle_columns = spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.{table_name}.COLUMNS")
 
+            # Find extra columns in Oracle table
+            extra_columns = set(oracle_columns.select("column_name").rdd.flatMap(lambda x: x).collect()) - set(hive_columns.select("column_name").rdd.flatMap(lambda x: x).collect())
 
-Message ChatGPT…
+            # Soft delete extra columns in Oracle table
+            if extra_columns:
+                for column in extra_columns:
+                    # Perform soft delete by updating the column value to NULL or a specific flag
+                    spark.read.jdbc(**oracle_connection_properties, table=f"{schema_name}.{table_name}", column=column).write.jdbc(
+                        mode="overwrite",
+                        properties=oracle_connection_properties,
+                        url=oracle_connection_properties["url"],
+                        table=f"{schema_name}.{table_name}",
+                    )
 
-ChatGPT can make mistakes. Consider checking 
+# Execute the comparison and soft delete
+compare_and_soft_delete()
+
+# Stop the Spark session
+spark.stop()
