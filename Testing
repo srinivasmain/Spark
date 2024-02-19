@@ -1,86 +1,9 @@
-import org.apache.spark.sql.{SparkSession, Row}
-import org.apache.spark.sql.types.{StructType, StructField, IntegerType, StringType}
+// Filter the rows based on the conditions
+val resultDF = oradf.join(hivedf, Seq("tablename", "databasename"))
+  .filter(col("colname").isin(oradfNotInHivedf: _*) || col("colname_1").isin(hivedfNotInOradf: _*))
 
-// Create a Spark session
-val spark = SparkSession.builder.appName("sample_data_creation").getOrCreate()
+// Select the desired columns
+val finalDF = resultDF.select("csid", "csname", "colid", "colname", "tablename", "databasename")
 
-// Define the data for oradf
-val oradata = Seq(
-  (1, "employe", "1", "c1", "employe", "empdb"),
-  (2, "employee", "2", "c2", "employe", "empdb"),
-  (3, "employe", "3", "c3", "employe", "empdb"),
-  (4, "employe", "4", "c4", "employe", "empdb"),
-  (5, "employe", "5", "c5", "employe", "empdb"),
-  (6, "employe", "6", "c6", "employe", "empdb"),
-  (7, "employe", "7", "c7", "employe", "empdb"),
-  (8, "employe", "8", "c8", "employe", "empdb"),
-  (9, "employe", "9", "c9", "employe", "empdb"),
-  (10, "employe", "10", "c10", "employe", "empdb"),
-  (11, "dept", "1", "dc1", "dept", "empdb"),
-  (12, "dept", "2", "dc2", "dept", "empdb"),
-  (13, "dept", "3", "dc3", "dept", "empdb"),
-  (14, "dept", "4", "dc4", "dept", "empdb"),
-  (15, "dept", "5", "dc5", "dept", "empdb")
-)
-
-// Define the schema for oradf
-val oraschema = StructType(List(
-  StructField("csid", IntegerType, true),
-  StructField("csname", StringType, true),
-  StructField("colid", StringType, true),
-  StructField("colname", StringType, true),
-  StructField("tablename", StringType, true),
-  StructField("databasename", StringType, true)
-))
-
-// Create RDD of Rows for oradf
-val orarows = oradata.map { case (csid, csname, colid, colname, tablename, databasename) =>
-  Row(csid, csname, colid, colname, tablename, databasename)
-}
-
-// Create DataFrame for oradf
-val oradf = spark.createDataFrame(spark.sparkContext.parallelize(orarows), oraschema)
-
-// Define the data for hivedf
-val hivedata = Seq(
-  (1, "employe", "1", "c1", "employe", "empdb"),
-  (2, "employee", "2", "c22", "employe", "empdb"),
-  (3, "employe", "3", "c3", "employe", "empdb"),
-  (4, "employe", "4", "c4", "employe", "empdb"),
-  (5, "employe", "5", "c5", "employe", "empdb"),
-  (6, "employe", "6", "c6", "employe", "empdb"),
-  (7, "employe", "7", "c7", "employe", "empdb"),
-  (8, "employe", "8", "c28", "employe", "empdb"),
-  (9, "employe", "9", "c9", "employe", "empdb"),
-  (10, "employe", "10", "c10", "employe", "empdb"),
-  (11, "dept", "1", "dc1", "dept", "empdb"),
-  (12, "dept", "2", "dc2", "dept", "empdb"),
-  (13, "dept", "3", "dc3", "dept", "empdb"),
-  (14, "dept", "4", "dc4", "dept", "empdb"),
-  (15, "dept", "5", "dc5", "dept", "empdb")
-)
-
-// Define the schema for hivedf
-val hiveschema = StructType(List(
-  StructField("csid", IntegerType, true),
-  StructField("csname", StringType, true),
-  StructField("colid", StringType, true),
-  StructField("colname", StringType, true),
-  StructField("tablename", StringType, true),
-  StructField("databasename", StringType, true)
-))
-
-// Create RDD of Rows for hivedf
-val hiverows = hivedata.map { case (csid, csname, colid, colname, tablename, databasename) =>
-  Row(csid, csname, colid, colname, tablename, databasename)
-}
-
-// Create DataFrame for hivedf
-val hivedf = spark.createDataFrame(spark.sparkContext.parallelize(hiverows), hiveschema)
-
-val hivedfa = hivedf.withColumnRenamed("csid", "hive_csid").withColumnRenamed("csname", "hive_csname").withColumnRenamed("colid", "hive_colid").withColumnRenamed("colname", "hive_colname").withColumnRenamed("tablename", "hive_tablename").withColumnRenamed("databasename", "hive_databasename")
-// Get colname in hivedf but not in oradf
-val hivedfNotInOradf = hivedfa.select("colname").except(oradf.select("colname"))
-
-// Get colname in oradf but not in hivedf
-val oradfNotInHivedf = oradf.select("colname").except(hivedfa.select("colname"))
+// Show the final DataFrame
+finalDF.show()
