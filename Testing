@@ -1,89 +1,16 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, IntegerType, StringType
-from pyspark.sql.functions import col, array
 
 # Create a Spark session
-spark = SparkSession.builder.appName("sample_data_creation").getOrCreate()
+spark = SparkSession.builder.appName("ReadJSON").getOrCreate()
 
-# Define the data for oradf
-oradata = [
-    (1, "employe", "1", "c1", "employe", "empdb"),
-    (2, "employee", "2", "c2", "employe", "empdb"),
-    (3, "employe", "3", "c3", "employe", "empdb"),
-    (4, "employe", "4", "c4", "employe", "empdb"),
-    (5, "employe", "5", "c5", "employe", "empdb"),
-    (6, "employe", "6", "c6", "employe", "empdb"),
-    (7, "employe", "7", "c7", "employe", "empdb"),
-    (8, "employe", "8", "c8", "employe", "empdb"),
-    (9, "employe", "9", "c9", "employe", "empdb"),
-    (10, "employe", "10", "c10", "employe", "empdb"),
-    (11, "dept", "1", "dc1", "dept", "empdb"),
-    (12, "dept", "2", "dc2", "dept", "empdb"),
-    (13, "dept", "3", "dc3", "dept", "empdb"),
-    (14, "dept", "4", "dc4", "dept", "empdb"),
-    (15, "dept", "5", "dc5", "dept", "empdb")
-]
+# Define the path to your multi-line JSON file
+json_file_path = "path/to/your/multi_line_file.json"
 
-# Define the schema for oradf
-oraschema = StructType([
-    StructField("csid", IntegerType(), True),
-    StructField("csname", StringType(), True),
-    StructField("colid", StringType(), True),
-    StructField("colname", StringType(), True),
-    StructField("tablename", StringType(), True),
-    StructField("databasename", StringType(), True)
-])
+# Read the multi-line JSON file into a DataFrame
+json_df = spark.read.option("multiline", "true").json(json_file_path)
 
-# Create DataFrame for oradf
-oradf = spark.createDataFrame(oradata, schema=oraschema)
+# Show the DataFrame
+json_df.show(truncate=False)
 
-# Define the data for hivedf
-hivedata = [
-    (1, "employe", "1", "c1", "employe", "empdb"),
-    (2, "employee", "2", "c22", "employe", "empdb"),
-    (3, "employe", "3", "c3", "employe", "empdb"),
-    (4, "employe", "4", "c4", "employe", "empdb"),
-    (5, "employe", "5", "c5", "employe", "empdb"),
-    (6, "employe", "6", "c6", "employe", "empdb"),
-    (7, "employe", "7", "c7", "employe", "empdb"),
-    (8, "employe", "8", "c28", "employe", "empdb"),
-    (9, "employe", "9", "c9", "employe", "empdb"),
-    (10, "employe", "10", "c10", "employe", "empdb"),
-    (11, "dept", "1", "dc1", "dept", "empdb"),
-    (12, "dept", "2", "dc2", "dept", "empdb"),
-    (13, "dept", "3", "dc3", "dept", "empdb"),
-    (14, "dept", "4", "dc4", "dept", "empdb"),
-    (15, "dept", "5", "dc5", "dept", "empdb")
-]
-
-# Define the schema for hivedf
-hiveschema = StructType([
-    StructField("csid", IntegerType(), True),
-    StructField("csname", StringType(), True),
-    StructField("colid", StringType(), True),
-    StructField("colname", StringType(), True),
-    StructField("tablename", StringType(), True),
-    StructField("databasename", StringType(), True)
-])
-
-# Create DataFrame for hivedf
-hivedf = spark.createDataFrame(hivedata, schema=hiveschema)
-
-# Rename columns in hivedf
-hivedfa = hivedf.withColumnRenamed("csid", "hive_csid").withColumnRenamed("csname", "hive_csname").withColumnRenamed("colid", "hive_colid").withColumnRenamed("colname", "hive_colname").withColumnRenamed("tablename", "hive_tablename").withColumnRenamed("databasename", "hive_databasename")
-
-# Get colname in hivedf but not in oradf
-oradf_not_in_hivedf = oradf.select("colname").subtract(hivedfa.select("hive_colname"))
-
-# Get colname in oradf but not in hivedf
-hivedf_not_in_oradf = hivedfa.select("hive_colname").subtract(oradf.select("colname"))
-
-# Filter the rows based on the conditions
-resultDF = oradf.join(hivedfa, (col("tablename") == col("hive_tablename")) & (col("databasename") == col("hive_databasename")))
-resultDF = resultDF.filter(array(col("colname")).isin(oradf_not_in_hivedf.collect()[0]) | array(col("hive_colname")).isin(hivedf_not_in_oradf.collect()[0]))
-
-# Select the desired columns
-finalDF = resultDF.select("csid", "csname", "colid", "colname", "tablename", "databasename")
-
-# Show the final DataFrame
-finalDF.show()
+# Stop the Spark session (optional, depending on your workflow)
+spark.stop()
