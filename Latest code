@@ -1,210 +1,57 @@
-# Import necessary libraries and modules
-from src.com.bofa.dcm.utilities import sparkDBUtility as sparkUtil, dq4qd_logger, constants
-from src.com.bofa.dcm.utilities import helperUtils as helper
-import pyspark.sql.functions as F
-from pyspark.sql.window import Window
-from src.com.bofa.dcm.properties import load_properties
-import json
-import configparser
-logger = dq4qd_logger.get_logger_with_name(constants.LOGGER_NAME)
+"""
+Script for Hive Technical Metadata Harvesting using PySpark.
 
-# Function to fetch start and end time based on input conditions
-def fetch_start_end_time(dq_result_df, start_time):
-    if start_time is not None:
-        start_time_out = start_time
-        max_created_ts = dq_result_df.agg(F.max("created_ts").alias("end_time"))
-        end_time_out = max_created_ts.first()["end_time"]
-        logger.info(f"Start time: {start_time_out}, End time: {end_time_out}")
-        return start_time_out, end_time_out
-    else:
-        min_max_df = dq_result_df.agg(F.min("created_ts").alias("start_time"), F.max("created_ts").alias("end_time")).first()
-        start_time_out = min_max_df["start_time"]
-        end_time_out = min_max_df["end_time"]
-        logger.info(f"No start time provided. Using min-max times. Start time: {start_time_out}, End time: {end_time_out}")
-        return start_time_out, end_time_out
+Usage:
+- Ensure you have the necessary modules: `sparkUtil` and `hiveTechMD`.
+- Modify the script according to your specific requirements.
 
-# Function to compute aggregated scores based on rule execution results
-def get_aggregated_scores(dq_result_df):
-    pass_condition = F.col('rule_status') == 'Pass'
-    fail_condition = F.col('rule_status') == 'Fail'
-    not_executed_condition = F.col('rule_status') == 'Not Executed'
+Script Flow:
+1. Initializes variables for start_time, end_time, and json_stats.
+2. Creates a Spark session named "spark" using the sparkUtil module.
+3. Records the start time of the job.
+4. Specifies the harvesting system as "Hive_Technical_Metadata_Harvesting".
+5. Creates a database dataframe for the "dcm" database and "job_status_tab" table.
+6. If the harvesting system is "Hive_Technical_Metadata_Harvesting":
+    a. Defines a parser with a sample SQL query.
+    b. Calls the hiveTechMD module's method to harvest technical metadata using Spark.
+    # c. Potentially calls the atlas module to harvest metadata from Atlas (commented out).
+7. Stops the Spark session.
 
-    overall_window = Window.partitionBy('database_name', 'table_name')
+Note:
+- Make sure to replace or modify specific parts of the script based on your actual requirements.
+"""
 
-    # Group and aggregate DQ results
-    dq_result_df = (
-        dq_result_df.groupby('database_name', 'table_name', 'column_name')
-        .agg(
-            F.sum(F.when(pass_condition, 1).otherwise(0)).alias('pass_count'),
-            F.sum(F.when(fail_condition, 1).otherwise(0)).alias('failed_count'),
-            F.sum(F.when(not_executed_condition, 1).otherwise(0)).alias('not_executed_count'),
-            F.countDistinct('rule_def_id').alias('total_rules')
-        )
-    )
+from datetime import datetime
+import sparkUtil  # Assuming you have a module named sparkUtil
+import hiveTechMD  # Assuming you have a module named hiveTechMD
 
-    # Calculate pass_percentage based on conditions
-    dq_result_df = dq_result_df.withColumn(
-        'pass_percentage',
-        F.round(
-            F.when(F.upper(F.col('column name')) == 'NA',
-                   F.sum(F.col('pass_count')).over(overall_window) / F.sum(F.col('total_rules')).over(overall_window))
-            .otherwise(F.col('pass_count') / F.col('total_rules')) * 100,
-            8
-        )
-    )
+if __name__ == "__main__":
+    start_time = None
+    end_time = None
+    json_stats = None
 
-    return dq_result_df
+    # Step 2: Create a Spark session
+    spark = sparkUtil.create_spark_session("spark")
 
-# Main function to harvest data from DQ to DCM
-def harvest_dq4qd(spark, from_time):
-    # Load DQ, DCM, and AST hierarchy dataframes
-    dq_result_df = sparkUtil.create_db_dataframe(spark, "dq", "rule_result_table")
-    dq_rule_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "rule_table")
-    dq_agg_table_df = sparkUtil.create_db_dataframe(spark, "dcm", "agg_table")
-    ast_hierarchy_df = sparkUtil.create_db_dataframe(spark, "dcm", "ast_hierarchy_table")
+    # Step 3: Record job start time
+    job_start_time = datetime.now()
 
-    # Fetch the time range for DQ results
-    start_time, end_time = fetch_start_end_time(dq_result_df, from_time)
-    # Filter DQ results based on the time range
-    dq_result_df = dq_result_df.filter((F.col("created_ts") > start_time) & (F.col("created_ts") <= end_time))
+    # Step 4: Specify harvesting system
+    harvesting_system = "Hive_Technical_Metadata_Harvesting"
 
-    # Deduplicate DQ rule dataframe
-    dq_rule_df = dq_result_df.dropDuplicates(['table_name', 'database_name', 'column_name', 'rule_def_id'])
-    # Compute aggregated scores for DQ results
-    dq_result_df = get_aggregated_scores(dq_result_df)
-    # Count the number of records received from DQ
-    num_of_records_fromDQ = dq_result_df.count()
+    # Step 5: Create a database dataframe
+    sparkUtil.create_db_dataframe(spark, "dcm", "job_status_tab")
 
-    logger.info(f"Num of records in dq4qd table where created_ts > {start_time} and <= {end_time} are: {num_of_records_fromDQ}")
-    assets_present_in_dcm_count = 0
+    # Step 6: Perform actions based on the harvesting system
+    if harvesting_system == "Hive_Technical_Metadata_Harvesting":
+        # Step 6a: Define a parser
+        parser = Parser("SELECT VPRC PROD_ENGN_PRCS_FC.sessn_id AS SESSN_ID")
 
-    if num_of_records_fromDQ > 0:
-        # Generate conditions for AST hierarchy
-        database_condition, table_condition, column_condition = helper.get_ast_hierarchy_conditions(ast_hierarchy_df)
-        ast_hierarchy_df = (
-            ast_hierarchy_df.withColumn('database_name', database_condition)
-            .withColumn('table_name', table_condition)
-            .withColumn('column_name', column_condition)
-        )
+        # Step 6b: Call the method to harvest technical metadata
+        hiveTechMD.harvest_technical_metadata(spark)
 
-        # Join DQ results with AST hierarchy
-        dq_result_wth_ast_id_df = dq_result_df.join(ast_hierarchy_df,
-                                                     (F.upper(dq_result_df['database_name']) ==
-                                                      F.upper(ast_hierarchy_df['database_name'])) &
-                                                     (F.upper(dq_result_df['table_name']) ==
-                                                      F.upper(ast_hierarchy_df['table_name'])) &
-                                                     (F.upper(dq_result_df['column_name']) ==
-                                                      F.upper(ast_hierarchy_df['column_name'])),
-                                                     'inner')
+        # Step 6c: Potentially call the atlas module (commented out)
+        # start_time, end time, json_stats = atlas.harvest_atlas(spark)
 
-        # Count the number of assets present in DCM
-        assets_present_in_dcm_count = dq_result_wth_ast_id_df.count()
-
-        # Select relevant columns for DQ aggregated scores
-        dq_agg_df = dq_result_wth_ast_id_df.select(
-            F.col('AST_ID'),
-            F.col('pass_count'),
-            F.col('failed_count'),
-            F.col('not_executed_count'),
-            F.col('total_rules'),
-            F.col('pass_percentage')
-        )
-
-        count_to_update_or_insert = dq_rule_df.count()
-
-        updates_dq_agg_df = dq_agg_df.join(dq_agg_table_df, 'ast_id', 'inner')
-        # Coalesce partitions to improve performance
-        updates_dq_agg_df = updates_dq_agg_df.coalesce(2)
-
-        # If there are records to update, execute the update
-        if updates_dq_agg_df.count() > 0:
-            updates_dq_agg_df = updates_dq_agg_df.toDF(*[col.lower() for col in updates_dq_agg_df.columns])
-            update_config = load_properties("dcm")
-            update_query_template = update_config["dq_agg_update_query"]["query"]
-            logger.info(f"Executing update query for DQ aggregated scores. Template: {update_query_template}")
-
-            # Execute the update query for DQ aggregated scores
-            updates_dq_agg_df.foreachPartition(
-                lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping)
-            )
-
-        # Identify new records for DQ aggregated scores
-        new_records_dq_agg_df = dq_agg_df.join(updates_dq_agg_df, 'ast_id', 'left_anti')
-        # Coalesce partitions for better performance
-        # new_records_dq_agg_df = new_records_dq_agg_df.coalesce(2)
-
-        # Generate a unique identifier for new records
-        new_records_dq_agg_df = new_records_dq_agg_df.withColumn('data_qual_id', F.expr('uuid()'))
-
-        # Write new records to the DCM aggregate table
-        dq_rule_with_ast_id_df = dq_rule_df.join(
-            ast_hierarchy_df,
-            ((F.upper(dq_rule_df['database_name']) == F.upper(ast_hierarchy_df['database_name'])) &
-             (F.upper(dq_result_df['table_name']) == F.upper(ast_hierarchy_df['table_name'])) &
-             (F.upper(dq_result_df['column_name']) == F.upper(ast_hierarchy_df['column_name']))
-            ),
-            'inner')
-
-        updates_dq_rule_df = (dq_rule_with_ast_id_df.join(updates_dq_agg_df, 'AST_ID', 'inner').select([F.col('data_qual_id'), F.col('RULE_DEF_ID'), F.col('RULE_NAME')]))
-
-        # Updated records + new records for data_qual_rules table in DCM
-        final_dq_rule_df = (dq_rule_with_ast_id_df.join(new_records_dq_agg_df, 'ast_id', 'inner')
-                            .select(F.col('data_qual_id'), F.col('RULE_DEF_ID'), F.col('RULE_NAME'))
-                            .union(updates_dq_rule_df))
-
-        if updates_dq_rule_df.count() > 0:
-            updates_dq_rule_df = updates_dq_rule_df.toDF(*[col.lower() for col in updates_dq_rule_df.columns])
-            # updates_dq_rule_df.show()
-
-            update_config = load_properties("dcm")
-            update_query_template = update_config["dq_rule_delete_query"]["query_del"]
-
-            logger.info("====Updated records + new records for data_qual_rules table in DCM, since we are deleting the update records and inserting later====")
-
-            logger.info(f"Performing delete on rule: {update_query_template}")
-
-            column_mapping = {key: value for key, value in update_config["dq_rule_delete_query"].items() if key != "query_del"}
-
-            updates_dq_rule_df.foreachPartition(lambda iterator: sparkUtil.update_records(iterator, update_config, update_query_template, column_mapping))
-
-        new_records_dq_agg_df = new_records_dq_agg_df.select(
-            F.col("data_qual_id").alias("data_c"),
-            F.col("ast_id").alias("ast_id"),
-            F.lit(1111).alias("creat_btch_id"),
-            F.lit("DQ4QD").alias("creat_nm"),
-            F.current_timestamp().alias("creat_ts"),
-            F.lit("").alias("updt_btch_id"),
-            F.lit("").alias("updt_nm"),
-            F.lit("").alias(" -+ s ^ prime prime "),
-            F.col("pass_count").alias("dq_pass_cnt"),
-            F.col("failed_count").alias("dq_fail_cnt"),
-            F.col("not_executed_count").alias("dq_nexd_cnt"),
-            F.col("total_rules").alias("dq_total_cnt"),
-            F.col("pass_percentage").alias("dq_pass_per"))
-
-        sparkUtil.write_dataframe_to_db(new_records_dq_agg_df, "dcm", "agg_table")
-
-        final_dq_rule_df = final_dq_rule_df.withColumn('data_qual_rule_id', F.expr('uuid()'))
-
-        final_dq_rule_df = final_dq_rule_df.select(
-            F.col("data_qual_rule_id").alias("data_qual_rule_id"),
-            F.col("data_qual_id").alias("data_qual_id"),
-            F.col("rule_def_id").alias("dq_rule_id"),
-            F.col("rule_name").alias("dq_rule_nm"),
-            F.lit(1111).alias("creat_btch_id ( d ^ prime prime "),
-            F.lit("DQ4QD").alias("creat_nm"),
-            F.current_timestamp().alias("creat_ts"),
-            F.lit("").alias("updt_btch_id"),
-            F.lit("").alias("updt_nm"),
-            F.lit("").alias("upd_t_ts"))
-
-        sparkUtil.write_dataframe_to_db(final_dq_rule_df, "dcm", "rule_table")
-
-        stats = {"received FromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
-        json_stats = json.dumps(stats)
-
-    else:
-        stats = {"receivedFromDQ": num_of_records_fromDQ, "insertedIntoDCM": assets_present_in_dcm_count}
-        json_stats = json.dumps(stats)
-
-    return start_time, end_time, json_stats
+    # Step 7: Stop the Spark session
+    spark.stop()
