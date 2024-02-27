@@ -1,36 +1,27 @@
-# Analysis Document:
+# Code Analysis:
 
-## Objective:
-The objective of the provided PySpark code is to process Hive tech metadata by comparing columns between a Hive DataFrame (`dcm_hive_inner_df`) and an Oracle DataFrame (`col_details_df`). If the column names in the Oracle DataFrame do not match with the Hive DataFrame, the unmatched columns in the Oracle DataFrame are soft deleted.
+## 1. Extraction of Relevant Columns:
+   - The code extracts relevant columns from the `table_details_df` and `ast_relation_df`, storing them in `hive_tbl_dtls_df` and `ast_tables_hierarchy_df`, respectively.
 
-## Code Overview:
+## 2. Joining DataFrames:
+   - An inner join is performed between `ast_relation_df` and `hive_tbl_dtls_df` to create `dcm_hive_inner_df`. The join is based on matching cluster, database, and table names.
 
-1. **Extracting Relevant Columns:**
-   - Columns such as "tableName," "databaseName," and "cluster_info" are extracted from the `table_details_df` to create `hive_tbl_dtls_df`.
-   - Columns relevant to AST tables hierarchy are extracted from `ast_relation_df` to create `ast_tables_hierarchy_df`.
+## 3. Column Comparison and Soft Deletion:
+   - A left join is executed between `dcm_hive_inner_df` and `col_details_df` to create `col_joined_df`. The code then identifies unmatched columns in the Oracle DataFrame by comparing column names.
+   - A new DataFrame, `soft_deleted_df`, is generated to store unmatched columns with an additional "is_deleted" column set to 1.
 
-2. **Joining DataFrames:**
-   - `dcm_hive_inner_df` is created by performing an inner join between `ast_relation_df` and `hive_tbl_dtls_df`. This join is based on matching cluster, database, and table names.
+## 4. Result Filtering and Display:
+   - The code filters rows in `col_joined_df` where the "columnName" is null (indicating unmatched columns) and drops duplicate rows to create `res_df`.
+   - Both `res_df` and `soft_deleted_df` are displayed, providing insights into the results.
 
-3. **Comparing Columns:**
-   - `col_joined_df` is created by performing a left join between `dcm_hive_inner_df` and `col_details_df`. The join is based on matching cluster, database, table, and column names.
-   - Unmatched columns in the Oracle DataFrame are identified by comparing column names.
+## 5. Considerations:
+   - The code assumes that the columns used in joins and comparisons exist in the provided DataFrames. Ensure column name consistency.
+   - The soft deletion strategy involves marking unmatched columns, allowing for a controlled deletion process. Adjust as per specific business requirements.
 
-4. **Soft Deletion of Unmatched Columns:**
-   - A new DataFrame, `soft_deleted_df`, is created to store unmatched columns from the Oracle DataFrame. These columns are marked with an additional "is_deleted" column set to 1.
+## 6. Output and Next Steps:
+   - The code outputs two DataFrames: `res_df` with unmatched column information and `soft_deleted_df` marking the soft-deleted columns.
+   - Further steps may involve additional analysis of soft-deleted columns or integrating the results into downstream processes.
 
-5. **Filtering and Displaying Results:**
-   - The result DataFrame, `res_df`, is created by filtering rows where the "columnName" in `col_joined_df` is null (indicating unmatched columns) and dropping duplicate rows.
-   - Both `res_df` and `soft_deleted_df` are displayed to provide insights into the results.
-
-6. **Considerations:**
-   - The code assumes that the appropriate columns exist in the provided DataFrames. Ensure that the actual column names match the ones used in the code.
-   - Adjust the soft deletion strategy based on specific requirements, such as marking columns or archiving them instead of deletion.
-
-7. **Output and Further Steps:**
-   - The code outputs the result DataFrame (`res_df`) containing rows with unmatched columns and a DataFrame (`soft_deleted_df`) marking the soft-deleted columns.
-   - Further steps may involve analyzing the soft-deleted columns or incorporating additional business logic based on the results.
-
-8. **Conclusion:**
-   - The code aims to efficiently handle unmatched columns between Oracle and Hive DataFrames, providing a basis for further data quality and integration processes.
-
+## 7. Conclusion:
+   - The code effectively addresses the objective of processing Hive tech metadata, comparing columns, and implementing a soft deletion strategy for unmatched columns in the Oracle DataFrame.
+   - With proper column validation and adjustment of the soft deletion approach, this code serves as a robust foundation for maintaining data integrity and quality in a mixed-metadata environment.
