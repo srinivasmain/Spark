@@ -1,1 +1,6 @@
-DAITSDPDCM-906. added logging and respective code
+Soft delete extra/non used cols from oracle
+ 
+For soft deleting the asset as a cols from oracle that are not present/exists in technical metadata/Hive. Please refer ebelow steps
+ 
+1) will check the table details from the hive and compare/join with the tables from oracle to fetch the only matched tables 
+2) for the above matched tables will compare/check the column details by performing left joining it and afterperforming left 
